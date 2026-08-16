@@ -10,9 +10,9 @@ from lala.utils.logging import logger
 
 class OllamaProvider(LocalLLMProvider):
     """
-    Local Ollama LLM Provider for LALA Phase 8.
-    Uses direct HTTP requests to validated local loopback endpoint (http://127.0.0.1:11434).
-    Zero shell command execution, zero cloud fallback.
+    Local Ollama LLM Provider for LALA Phase 8.1.
+    Uses direct HTTP requests via safe local opener to validated loopback endpoint (http://127.0.0.1:11434).
+    Zero shell command execution, zero external proxy leaking, zero cloud fallback.
     """
     def __init__(self, endpoint: str = "http://127.0.0.1:11434"):
         super().__init__(name="ollama", endpoint=endpoint)
@@ -21,7 +21,7 @@ class OllamaProvider(LocalLLMProvider):
         try:
             url = f"{self.endpoint}/api/tags"
             req = urllib.request.Request(url, method="GET")
-            with urllib.request.urlopen(req, timeout=3) as resp:
+            with self.opener.open(req, timeout=3) as resp:
                 if resp.status == 200:
                     data = json.loads(resp.read().decode("utf-8"))
                     models = [m.get("name", "") for m in data.get("models", [])]
@@ -82,7 +82,7 @@ class OllamaProvider(LocalLLMProvider):
 
         try:
             req = urllib.request.Request(url, data=json.dumps(payload).encode("utf-8"), headers={"Content-Type": "application/json"})
-            with urllib.request.urlopen(req, timeout=30) as resp:
+            with self.opener.open(req, timeout=30) as resp:
                 if resp.status == 200:
                     res_data = json.loads(resp.read().decode("utf-8"))
                     return GenerationResponse(
@@ -116,7 +116,7 @@ class OllamaProvider(LocalLLMProvider):
         }
         try:
             req = urllib.request.Request(url, data=json.dumps(payload).encode("utf-8"), headers={"Content-Type": "application/json"})
-            with urllib.request.urlopen(req, timeout=30) as resp:
+            with self.opener.open(req, timeout=30) as resp:
                 if resp.status == 200:
                     res_data = json.loads(resp.read().decode("utf-8"))
                     msg = res_data.get("message", {})

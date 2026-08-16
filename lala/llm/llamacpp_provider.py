@@ -10,8 +10,8 @@ from lala.utils.logging import logger
 
 class LlamaCppProvider(LocalLLMProvider):
     """
-    Local llama.cpp Server Provider for LALA Phase 8.
-    Uses direct HTTP requests to validated local loopback endpoint (http://127.0.0.1:8080).
+    Local llama.cpp Server Provider for LALA Phase 8.1.
+    Uses direct HTTP requests via safe local opener to validated loopback endpoint (http://127.0.0.1:8080).
     """
     def __init__(self, endpoint: str = "http://127.0.0.1:8080"):
         super().__init__(name="llamacpp", endpoint=endpoint)
@@ -20,7 +20,7 @@ class LlamaCppProvider(LocalLLMProvider):
         try:
             url = f"{self.endpoint}/health"
             req = urllib.request.Request(url, method="GET")
-            with urllib.request.urlopen(req, timeout=2) as resp:
+            with self.opener.open(req, timeout=2) as resp:
                 if resp.status == 200:
                     return LocalProviderHealth(
                         provider_name=self.name,
@@ -57,7 +57,7 @@ class LlamaCppProvider(LocalLLMProvider):
         payload = {"prompt": request.prompt, "temperature": request.temperature, "n_predict": request.max_tokens}
         try:
             req = urllib.request.Request(url, data=json.dumps(payload).encode("utf-8"), headers={"Content-Type": "application/json"})
-            with urllib.request.urlopen(req, timeout=30) as resp:
+            with self.opener.open(req, timeout=30) as resp:
                 if resp.status == 200:
                     res_data = json.loads(resp.read().decode("utf-8"))
                     return GenerationResponse(

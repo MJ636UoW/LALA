@@ -8,11 +8,17 @@ from lala.llm.llamacpp_provider import LlamaCppProvider
 from lala.llm.router import LocalModelRouter
 from lala.llm.health import LocalLLMHealthChecker
 from lala.llm.privacy import LocalLLMPrivacyEngine
+from lala.utils.logging import logger
+
+FORBIDDEN_REGISTRY_ATTRIBUTES = [
+    "privileged", "allow_privileged", "cloud_fallback", "network_access",
+    "security_engine", "bypass_security", "confirmation_required"
+]
 
 class LocalLLMManager:
     """
-    Central Manager for LALA Phase 8 Local LLM Subsystem.
-    Manages local model directory (F:\\LALA\\Models\\), local registry, model selection, and router.
+    Hardened Central Manager for LALA Phase 8.1 Local LLM Subsystem.
+    Manages local model directory (F:\\LALA\\Models\\), local registry, model selection, path canonicalization, and security policies.
     """
     def __init__(self, models_root: str = "F:\\LALA\\Models"):
         self.models_root = Path(models_root)
@@ -27,6 +33,28 @@ class LocalLLMManager:
             self.models_root.mkdir(parents=True, exist_ok=True)
         except Exception:
             pass
+
+    def is_path_within_models_root(self, target_path: str) -> bool:
+        if not target_path or not isinstance(target_path, str):
+            return False
+        if target_path.startswith("\\\\") or target_path.startswith("//") or target_path.startswith("\\\\?\\"):
+            return False # Reject UNC and device paths
+        try:
+            canonical = os.path.realpath(target_path)
+            root_canonical = os.path.realpath(str(self.models_root))
+            return canonical == root_canonical or canonical.startswith(root_canonical + os.sep)
+        except Exception:
+            return False
+
+    def sanitize_model_metadata(self, metadata: Dict[str, Any]) -> Dict[str, Any]:
+        """Strips security policy fields from model metadata payloads so metadata cannot alter security rules."""
+        sanitized = {}
+        for k, v in metadata.items():
+            if k.lower() in FORBIDDEN_REGISTRY_ATTRIBUTES:
+                logger.warning(f"LocalLLMManager Security Rejection: Model metadata entry attempted to specify policy attribute '{k}'")
+                continue
+            sanitized[k] = v
+        return sanitized
 
     def get_current_model(self) -> str:
         return self.active_model_name
