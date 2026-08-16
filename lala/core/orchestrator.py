@@ -12,21 +12,24 @@ from lala.workspace.scanner import WorkspaceScanner
 from lala.workspace.context import format_workspace_prompt_context
 from lala.agent.planner import TaskPlanner
 from lala.agent.executor import AgentExecutor, MAX_AGENT_STEPS
-from lala.utils.logging import logger
+from lala.intelligence.manager import IntelligenceManager
+from lala.investigation.manager import InvestigationManager
 
 MAX_TOOL_ITERATIONS = 5
 
 class Orchestrator:
     """
-    Central pipeline orchestrator for LALA Phase 5.
-    Coordinates User Goal -> Memory Retrieval -> Workspace Intelligence -> Structured Task Planner -> Security Check -> Step Executor -> Verifier -> Recovery -> Response.
+    Central pipeline orchestrator for LALA Phase 6.
+    Coordinates User Goal -> Memory -> Workspace -> Intelligence -> Structured Task Planner -> Security Engine -> Tool Executor -> Investigation -> Response.
     """
     def __init__(self, config: Optional[LalaConfig] = None):
         self.config = config or load_config()
         self.personality = PersonalityManager()
         self.security = SecurityEngine(allow_privileged=self.config.security.allow_privileged_execution)
         self.router = ModelRouter(config=self.config.model_router)
-        self.tools = ToolRegistry(security_engine=self.security)
+        self.intel_manager = IntelligenceManager(online_enabled=self.config.security.online_intelligence_enabled)
+        self.investigation_manager = InvestigationManager()
+        self.tools = ToolRegistry(security_engine=self.security, intel_manager=self.intel_manager)
         self.planner = ToolPlanner()
         self.executor = ToolExecutor(registry=self.tools)
         self.memory = MemoryManager(db_path=self.config.storage.memory_path)

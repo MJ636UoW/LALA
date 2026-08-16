@@ -30,6 +30,7 @@ class StorageConfig(BaseModel):
 class SecurityConfig(BaseModel):
     default_permission_level: str = "READ_ONLY"
     allow_privileged_execution: bool = False
+    online_intelligence_enabled: bool = False
 
 class ProviderConfig(BaseModel):
     type: str
