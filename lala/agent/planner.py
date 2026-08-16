@@ -29,7 +29,7 @@ class TaskPlanner:
             return TaskRisk.DESTRUCTIVE
         if "shell" in t_lower or "privileged" in t_lower:
             return TaskRisk.PRIVILEGED
-        return TaskRisk.READ_ONLY
+        return TaskRisk.DESTRUCTIVE
 
     def create_plan_for_goal(self, goal: str, raw_plan_json: Optional[str] = None) -> TaskPlan:
         steps: List[TaskStep] = []
