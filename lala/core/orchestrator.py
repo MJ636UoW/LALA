@@ -15,15 +15,16 @@ from lala.agent.executor import AgentExecutor, MAX_AGENT_STEPS
 from lala.intelligence.manager import IntelligenceManager
 from lala.investigation.manager import InvestigationManager
 from lala.llm.manager import LocalLLMManager
+from lala.rag.manager import LocalRAGManager
 from lala.utils.logging import logger
 
 MAX_TOOL_ITERATIONS = 5
 
 class Orchestrator:
     """
-    Central pipeline orchestrator for LALA Phase 8.
-    Coordinates User Goal -> Memory -> Workspace -> Local LLM Manager -> Security Engine -> Tool Executor -> Investigation -> Response.
-    Enforces 100% Local Inference, Zero Cloud LLM Fallback, and Privacy.
+    Central pipeline orchestrator for LALA Phase 9.
+    Coordinates User Goal -> Memory -> Workspace -> Offline Local RAG -> Local LLM Manager -> Security Engine -> Tool Executor -> Response.
+    Enforces 100% Local Inference, Zero Cloud LLM Fallback, Offline RAG, and Privacy.
     """
     def __init__(self, config: Optional[LalaConfig] = None):
         self.config = config or load_config()
@@ -31,6 +32,7 @@ class Orchestrator:
         self.security = SecurityEngine(allow_privileged=self.config.security.allow_privileged_execution)
         self.router = ModelRouter(config=self.config.model_router)
         self.local_llm_manager = LocalLLMManager()
+        self.rag_manager = LocalRAGManager()
         self.intel_manager = IntelligenceManager(online_enabled=self.config.security.online_intelligence_enabled)
         self.investigation_manager = InvestigationManager()
         self.tools = ToolRegistry(security_engine=self.security, intel_manager=self.intel_manager)
@@ -52,16 +54,16 @@ class Orchestrator:
         # Record user message in session state
         self.state.add_message("user", user_input, language=self.state.language_context.primary_language)
         
-        # 1. Retrieve workspace context & persistent memories
+        # 1. Retrieve workspace context & persistent memories & local RAG evidence
         ws_ctx = self.workspace_scanner.scan("D:\\LALA")
         ws_prompt_block = format_workspace_prompt_context(ws_ctx)
 
         retrieved_memories = self.memory.search_memory(user_input, limit=3)
         memory_str = "\n".join([f"- {m.content}" for m in retrieved_memories]) if retrieved_memories else "None"
 
-        # 2. Build system prompt from PersonalityManager & inject workspace context
+        # 2. Build system prompt & inject RAG context
         base_system_prompt = self.personality.get_system_prompt(self.state.language_context)
-        system_prompt = (
+        system_prompt_with_context = (
             f"{base_system_prompt}\n\n"
             f"{ws_prompt_block}\n\n"
             f"[RELEVANT PERSISTENT MEMORY]\n{memory_str}\n\n"
@@ -69,6 +71,8 @@ class Orchestrator:
             f"If you need a tool, output a JSON tool call format: ```json {{\"tool\": \"tool_name\", \"arguments\": {{...}}, \"reason\": \"...\"}} ```"
         )
         
+        system_prompt = self.rag_manager.build_prompt_context(system_prompt_with_context, user_input, top_k=8)
+
         # 3. Agent Execution Loop
         current_prompt = user_input
         iterations = 0
