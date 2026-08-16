@@ -1,6 +1,13 @@
 from typing import Dict, Optional, List
 from lala.tools.base import Tool, ToolResult
 from lala.security.permissions import SecurityEngine, PermissionLevel
+from lala.tools.system_info import SystemInfoTool
+from lala.tools.filesystem import FileListTool, FileReadTool, FileSearchTool
+from lala.tools.python_analysis import PythonAnalysisTool
+from lala.tools.shell import SafeCommandTool
+from lala.tools.git import GitTool
+from lala.tools.file_edit import FileEditTool
+from lala.tools.web import WebSearchTool
 from lala.utils.logging import logger
 
 class ToolRegistry:
@@ -11,10 +18,24 @@ class ToolRegistry:
     def __init__(self, security_engine: Optional[SecurityEngine] = None):
         self.tools: Dict[str, Tool] = {}
         self.security_engine = security_engine or SecurityEngine()
+        self._register_default_tools()
+
+    def _register_default_tools(self):
+        default_tools = [
+            SystemInfoTool(),
+            FileListTool(),
+            FileReadTool(),
+            FileSearchTool(),
+            PythonAnalysisTool(),
+            SafeCommandTool(),
+            GitTool(),
+            FileEditTool(),
+            WebSearchTool()
+        ]
+        for t in default_tools:
+            self.register_tool(t)
 
     def register_tool(self, tool: Tool) -> bool:
-        if tool.name in self.tools:
-            logger.warning(f"Tool '{tool.name}' is already registered. Overwriting registration.")
         self.tools[tool.name] = tool
         return True
 
@@ -29,7 +50,11 @@ class ToolRegistry:
         if not tool:
             return ToolResult(success=False, output=None, error=f"Tool '{name}' not found in registry.")
 
-        # Check permissions
+        # Validate input arguments
+        if not tool.validate(**kwargs):
+            return ToolResult(success=False, output=None, error=f"Validation error for tool '{name}'. Input arguments failed validation.")
+
+        # Check permissions through SecurityEngine
         check = self.security_engine.evaluate(tool.name, tool.permission_level)
         if not check.allowed:
             return ToolResult(
@@ -38,4 +63,9 @@ class ToolRegistry:
                 error=f"Security Policy Denied Execution: {check.reason}"
             )
 
-        return tool.execute(**kwargs)
+        # Audit log event
+        self.security_engine.audit(user="Mandar", tool_name=tool.name, target=str(kwargs), permission=tool.permission_level.value, result="ATTEMPT")
+
+        res = tool.execute(**kwargs)
+        self.security_engine.audit(user="Mandar", tool_name=tool.name, target=str(kwargs), permission=tool.permission_level.value, result="SUCCESS" if res.success else "FAILURE")
+        return res

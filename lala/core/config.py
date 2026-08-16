@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 from typing import Dict, List, Any, Optional
 import yaml
@@ -21,6 +22,10 @@ class StorageConfig(BaseModel):
     logs: str = "F:\\LALA\\Logs"
     cache: str = "F:\\LALA\\Cache"
     backups: str = "F:\\LALA\\Backups"
+
+    @property
+    def memory_path(self) -> str:
+        return os.path.join(self.memory, "lala_memory.db")
 
 class SecurityConfig(BaseModel):
     default_permission_level: str = "READ_ONLY"

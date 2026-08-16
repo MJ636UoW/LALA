@@ -31,3 +31,14 @@ ENV/
 .idea/
 .DS_Store
 *.log
+
+# Persistent Memory & Database Files (Ignored for privacy)
+*.db
+*.sqlite
+*.sqlite3
+lala_memory.db
+.env
+*.key
+*.pem
+*.token
+F:\LALA\Memory
