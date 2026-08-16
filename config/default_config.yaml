@@ -1,0 +1,35 @@
+# LALA System Configuration
+system:
+  name: "LALA"
+  call_name: "LALA"
+  voice_identity: "LALA"
+  personality: "LALA"
+  user_name: "Mandar"
+  default_language: "en"
+  supported_languages:
+    - "en" # English
+    - "hi" # Hindi
+    - "mr" # Marathi
+
+security:
+  default_permission_level: "READ_ONLY"
+  allow_privileged_execution: false
+
+model_router:
+  active_provider: "mock_local"
+  local_runtime: "ollama" # Planned for Phase 2
+  fallback_enabled: true
+  providers:
+    mock_local:
+      type: "local"
+      model_name: "ollama-placeholder"
+      endpoint: "http://localhost:11434"
+    mock_gemini:
+      type: "gemini"
+      model_name: "gemini-flash"
+    mock_claude:
+      type: "claude"
+      model_name: "claude-3-5-sonnet"
+    mock_openai:
+      type: "openai_compatible"
+      model_name: "gpt-4o"
