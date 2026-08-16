@@ -8,6 +8,8 @@ from lala.tools.shell import SafeCommandTool
 from lala.tools.git import GitTool
 from lala.tools.file_edit import FileEditTool
 from lala.tools.web import WebSearchTool
+from lala.tools.security_scan_tool import SecurityScanTool
+from lala.tools.workspace_scan_tool import WorkspaceScanTool
 from lala.utils.logging import logger
 
 class ToolRegistry:
@@ -30,7 +32,9 @@ class ToolRegistry:
             SafeCommandTool(),
             GitTool(),
             FileEditTool(),
-            WebSearchTool()
+            WebSearchTool(),
+            SecurityScanTool(),
+            WorkspaceScanTool()
         ]
         for t in default_tools:
             self.register_tool(t)

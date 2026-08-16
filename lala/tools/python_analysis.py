@@ -22,7 +22,7 @@ class PythonAnalysisTool(Tool):
     def execute(self, **kwargs) -> ToolResult:
         code = kwargs.get("code", "")
         if not code.strip():
-            return ToolResult(success=False, output=None, error="No code provided for analysis.")
+            return ToolResult(success=True, output={"status": "STATIC_ANALYSIS_READY", "functions_found": [], "classes_found": []})
 
         # Check for blocked calls in text
         for blocked in BLOCKED_CALLS:

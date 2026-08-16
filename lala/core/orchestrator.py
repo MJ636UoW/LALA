@@ -8,14 +8,18 @@ from lala.tools.registry import ToolRegistry
 from lala.tools.planner import ToolPlanner
 from lala.tools.executor import ToolExecutor
 from lala.memory.manager import MemoryManager
+from lala.workspace.scanner import WorkspaceScanner
+from lala.workspace.context import format_workspace_prompt_context
+from lala.agent.planner import TaskPlanner
+from lala.agent.executor import AgentExecutor, MAX_AGENT_STEPS
 from lala.utils.logging import logger
 
 MAX_TOOL_ITERATIONS = 5
 
 class Orchestrator:
     """
-    Central pipeline orchestrator for LALA Phase 4.
-    Coordinates User Input -> Persistent Memory Retrieval -> Model Router -> Tool Planner -> Security Check -> Tool Executor -> Multi-step Loop -> Final Response.
+    Central pipeline orchestrator for LALA Phase 5.
+    Coordinates User Goal -> Memory Retrieval -> Workspace Intelligence -> Structured Task Planner -> Security Check -> Step Executor -> Verifier -> Recovery -> Response.
     """
     def __init__(self, config: Optional[LalaConfig] = None):
         self.config = config or load_config()
@@ -26,6 +30,9 @@ class Orchestrator:
         self.planner = ToolPlanner()
         self.executor = ToolExecutor(registry=self.tools)
         self.memory = MemoryManager(db_path=self.config.storage.memory_path)
+        self.workspace_scanner = WorkspaceScanner(root_path="D:\\LALA")
+        self.task_planner = TaskPlanner()
+        self.agent_executor = AgentExecutor(executor=self.executor)
         self.state = SessionState(
             user_name=self.config.system.user_name,
             agent_name=self.config.system.name
@@ -38,14 +45,18 @@ class Orchestrator:
         # Record user message in session state
         self.state.add_message("user", user_input, language=self.state.language_context.primary_language)
         
-        # 1. Retrieve relevant persistent memories
+        # 1. Retrieve workspace context & persistent memories
+        ws_ctx = self.workspace_scanner.scan("D:\\LALA")
+        ws_prompt_block = format_workspace_prompt_context(ws_ctx)
+
         retrieved_memories = self.memory.search_memory(user_input, limit=3)
         memory_str = "\n".join([f"- {m.content}" for m in retrieved_memories]) if retrieved_memories else "None"
 
-        # 2. Build system prompt from PersonalityManager & inject memory context
+        # 2. Build system prompt from PersonalityManager & inject workspace context
         base_system_prompt = self.personality.get_system_prompt(self.state.language_context)
         system_prompt = (
             f"{base_system_prompt}\n\n"
+            f"{ws_prompt_block}\n\n"
             f"[RELEVANT PERSISTENT MEMORY]\n{memory_str}\n\n"
             f"[AVAILABLE TOOLS]: {', '.join(self.tools.list_tools())}\n"
             f"If you need a tool, output a JSON tool call format: ```json {{\"tool\": \"tool_name\", \"arguments\": {{...}}, \"reason\": \"...\"}} ```"
