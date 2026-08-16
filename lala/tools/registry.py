@@ -13,7 +13,13 @@ from lala.tools.workspace_scan_tool import WorkspaceScanTool
 from lala.tools.intel_tool import IntelLookupTool
 from lala.tools.cve_tool import CveLookupTool
 from lala.tools.mitre_tool import MitreLookupTool
+from lala.tools.investigate_tool import InvestigateTool
+from lala.tools.yara_tool import YaraScanTool
+from lala.tools.sigma_tool import SigmaTool
 from lala.intelligence.manager import IntelligenceManager
+from lala.investigation.investigation_engine import InvestigationEngine
+from lala.detection.yara_engine import YaraEngine
+from lala.detection.sigma_engine import SigmaEngine
 from lala.utils.logging import logger
 
 class ToolRegistry:
@@ -25,6 +31,9 @@ class ToolRegistry:
         self.tools: Dict[str, Tool] = {}
         self.security_engine = security_engine or SecurityEngine()
         self.intel_manager = intel_manager or IntelligenceManager()
+        self.investigation_engine = InvestigationEngine(intel_manager=self.intel_manager)
+        self.yara_engine = YaraEngine()
+        self.sigma_engine = SigmaEngine()
         self._register_default_tools()
 
     def _register_default_tools(self):
@@ -42,7 +51,10 @@ class ToolRegistry:
             WorkspaceScanTool(),
             IntelLookupTool(intel_manager=self.intel_manager),
             CveLookupTool(),
-            MitreLookupTool()
+            MitreLookupTool(),
+            InvestigateTool(engine=self.investigation_engine),
+            YaraScanTool(engine=self.yara_engine),
+            SigmaTool(engine=self.sigma_engine)
         ]
         for t in default_tools:
             self.register_tool(t)
