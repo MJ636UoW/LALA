@@ -1,30 +1,84 @@
 import os
 import re
+import urllib.parse
 from pathlib import Path
 from typing import List, Optional
 from lala.tools.base import Tool, ToolResult
 from lala.security.permissions import PermissionLevel
 
-FORBIDDEN_PATTERNS = ["..", "\\\\", "//"]
-RESTRICTED_DIRS = ["c:\\windows", "c:\\system32", "c:\\program files"]
+# Allowed workspace roots for LALA operations
+ALLOWED_WORKSPACE_ROOTS = [
+    os.path.realpath("D:\\LALA").lower(),
+    os.path.realpath("D:\\Projects").lower() if os.path.exists("D:\\Projects") else "d:\\projects",
+    os.path.realpath("F:\\LALA").lower()
+]
 
-def is_path_safe(target_path: str) -> bool:
-    normalized = os.path.abspath(target_path).lower()
-    
-    # Path traversal check
-    for pat in FORBIDDEN_PATTERNS:
-        if pat in target_path:
+# Explicitly forbidden system directory prefixes (canonical lower-case)
+FORBIDDEN_SYSTEM_DIRS = [
+    "c:\\windows",
+    "c:\\system32",
+    "c:\\program files",
+    "c:\\program files (x86)",
+    "c:\\recovery",
+    "c:\\system volume information"
+]
+
+FORBIDDEN_RAW_PATTERNS = ["..", "\\\\", "//", "file:", "%2e", "\x00", "\\\\?\\", "\\\\.\\"]
+
+def is_path_safe(target_path: str, allow_test_tmp: bool = True) -> bool:
+    if not target_path or not isinstance(target_path, str):
+        return False
+
+    # 1. Null-byte or URL-encoded traversal check
+    if "\x00" in target_path:
+        return False
+        
+    decoded_path = urllib.parse.unquote(target_path)
+    if "\x00" in decoded_path:
+        return False
+
+    # 2. Raw string pattern checks
+    raw_lower = target_path.lower()
+    for pat in FORBIDDEN_RAW_PATTERNS:
+        if pat in raw_lower:
             return False
-            
-    # Restricted system dir check
-    for res_dir in RESTRICTED_DIRS:
-        if normalized.startswith(res_dir):
+
+    # 3. Canonical path resolution
+    try:
+        abs_path = os.path.abspath(decoded_path)
+        canonical = os.path.realpath(abs_path).lower()
+    except Exception:
+        return False
+
+    # 4. Check for forbidden system directories
+    for sys_dir in FORBIDDEN_SYSTEM_DIRS:
+        if canonical.startswith(sys_dir):
             return False
-            
-    return True
+
+    # 5. Check symlink / junction reparse points
+    try:
+        if os.path.islink(abs_path) or os.path.islink(canonical):
+            return False
+    except Exception:
+        pass
+
+    # 6. Check workspace boundary containment
+    is_in_workspace = False
+    for root in ALLOWED_WORKSPACE_ROOTS:
+        if canonical == root or canonical.startswith(root + os.sep):
+            is_in_workspace = True
+            break
+
+    # Allow temp directory for automated test isolation if designated
+    if not is_in_workspace and allow_test_tmp:
+        tmp_dir = os.path.realpath(os.environ.get("TEMP", "C:\\AppData\\Local\\Temp")).lower()
+        if canonical.startswith(tmp_dir + os.sep) or canonical == tmp_dir:
+            is_in_workspace = True
+
+    return is_in_workspace
 
 class FileListTool(Tool):
-    """List files in an allowed directory."""
+    """List files in an allowed directory with canonical path sanitization."""
     def __init__(self):
         super().__init__(
             name="file_list",
@@ -35,18 +89,19 @@ class FileListTool(Tool):
         )
 
     def validate(self, **kwargs) -> bool:
-        path = kwargs.get("path", "")
+        path = kwargs.get("path", "D:\\LALA")
         return is_path_safe(path)
 
     def execute(self, **kwargs) -> ToolResult:
-        path_str = kwargs.get("path", ".")
+        path_str = kwargs.get("path", "D:\\LALA")
         if not self.validate(path=path_str):
-            return ToolResult(success=False, output=None, error=f"Access Denied: Unsafe path or path traversal detected: {path_str}")
+            return ToolResult(success=False, output=None, error=f"Access Denied: Path outside allowed workspace or invalid traversal: '{path_str}'")
 
         try:
-            target = Path(path_str)
+            canonical = os.path.realpath(path_str)
+            target = Path(canonical)
             if not target.exists() or not target.is_dir():
-                return ToolResult(success=False, output=None, error=f"Directory does not exist: {path_str}")
+                return ToolResult(success=False, output=None, error=f"Directory does not exist: '{path_str}'")
 
             entries = []
             for item in target.iterdir():
@@ -60,11 +115,11 @@ class FileListTool(Tool):
             return ToolResult(success=False, output=None, error=str(e))
 
 class FileReadTool(Tool):
-    """Read a text file in an allowed workspace."""
+    """Read a text file in an allowed workspace with canonical path sanitization."""
     def __init__(self):
         super().__init__(
             name="file_read",
-            description="Read content of a text file.",
+            description="Read content of a text file in an allowed workspace.",
             category="filesystem",
             permission_level=PermissionLevel.READ_ONLY,
             risk_description="File content read"
@@ -77,12 +132,13 @@ class FileReadTool(Tool):
     def execute(self, **kwargs) -> ToolResult:
         path_str = kwargs.get("path", "")
         if not self.validate(path=path_str):
-            return ToolResult(success=False, output=None, error=f"Access Denied: Unsafe path or path traversal detected: {path_str}")
+            return ToolResult(success=False, output=None, error=f"Access Denied: Path outside allowed workspace or invalid traversal: '{path_str}'")
 
         try:
-            target = Path(path_str)
+            canonical = os.path.realpath(path_str)
+            target = Path(canonical)
             if not target.exists() or not target.is_file():
-                return ToolResult(success=False, output=None, error=f"File does not exist: {path_str}")
+                return ToolResult(success=False, output=None, error=f"File does not exist: '{path_str}'")
 
             with open(target, "r", encoding="utf-8", errors="replace") as f:
                 content = f.read(100000) # Max 100KB per read
@@ -91,7 +147,7 @@ class FileReadTool(Tool):
             return ToolResult(success=False, output=None, error=str(e))
 
 class FileSearchTool(Tool):
-    """Search for matching files or text within an allowed directory."""
+    """Search for matching files or text within an allowed directory with canonical path sanitization."""
     def __init__(self):
         super().__init__(
             name="file_search",
@@ -102,17 +158,18 @@ class FileSearchTool(Tool):
         )
 
     def validate(self, **kwargs) -> bool:
-        path = kwargs.get("path", "")
+        path = kwargs.get("path", "D:\\LALA")
         return is_path_safe(path)
 
     def execute(self, **kwargs) -> ToolResult:
-        path_str = kwargs.get("path", ".")
+        path_str = kwargs.get("path", "D:\\LALA")
         query = kwargs.get("query", "").lower()
         if not self.validate(path=path_str):
-            return ToolResult(success=False, output=None, error=f"Access Denied: Unsafe path: {path_str}")
+            return ToolResult(success=False, output=None, error=f"Access Denied: Path outside allowed workspace: '{path_str}'")
 
         try:
-            target = Path(path_str)
+            canonical = os.path.realpath(path_str)
+            target = Path(canonical)
             matches = []
             for root, dirs, files in os.walk(target):
                 for f in files:

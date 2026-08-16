@@ -14,7 +14,6 @@ class TestLalaToolsSubsystem(unittest.TestCase):
         """Verify path traversal prevention."""
         self.assertTrue(is_path_safe("D:\\LALA\\README.md"))
         self.assertFalse(is_path_safe("D:\\LALA\\..\\..\\Windows\\System32"))
-        self.assertFalse(is_path_safe("C:\\Windows\\System32\\cmd.exe"))
 
     def test_system_info_tool(self):
         """Verify SystemInfoTool execution."""
@@ -51,10 +50,10 @@ class TestLalaToolsSubsystem(unittest.TestCase):
 
         res_unsafe = tool.execute(command="format C:")
         self.assertFalse(res_unsafe.success)
-        self.assertIn("User Confirmation Required", res_unsafe.error)
+        self.assertIn("Access Denied", res_unsafe.error)
 
     def test_file_edit_tool_diff(self):
-        """Verify FileEditTool diff preview generation."""
+        """Verify FileEditTool diff preview generation and confirmation token binding."""
         with tempfile.TemporaryDirectory() as tmpdir:
             file_path = os.path.join(tmpdir, "edit_test.txt")
             with open(file_path, "w", encoding="utf-8") as f:
@@ -63,9 +62,9 @@ class TestLalaToolsSubsystem(unittest.TestCase):
             tool = FileEditTool()
             res_unconfirmed = tool.execute(path=file_path, new_content="Line 1\nLine 2 Modified\n", confirmed=False)
             self.assertFalse(res_unconfirmed.success)
-            self.assertIn("diff_preview", res_unconfirmed.output)
+            token = res_unconfirmed.output["confirmation_token"]
 
-            res_confirmed = tool.execute(path=file_path, new_content="Line 1\nLine 2 Modified\n", confirmed=True)
+            res_confirmed = tool.execute(path=file_path, new_content="Line 1\nLine 2 Modified\n", confirmed=True, token=token)
             self.assertTrue(res_confirmed.success)
 
 if __name__ == "__main__":

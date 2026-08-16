@@ -20,11 +20,11 @@ class SecurityEngine:
     """
     Security authorization engine for LALA.
     Enforces permission policies prior to tool or agent execution.
-    Privileged execution is strictly forbidden in Phase 4.
+    Privileged execution, cloud fallback activation, and policy self-modification are strictly forbidden.
     Logs all security events to F:\\LALA\\Logs\\lala_security.log.
     """
     def __init__(self, allow_privileged: bool = False, log_path: str = "F:\\LALA\\Logs\\lala_security.log"):
-        self.allow_privileged = allow_privileged
+        self.allow_privileged = False # Hardened immutability: Privileged execution permanently disabled
         self.log_path = Path(log_path)
         self._init_log()
 
@@ -47,19 +47,19 @@ class SecurityEngine:
         return self.evaluate(tool_name, permission_level)
 
     def request_confirmation(self, action_description: str) -> bool:
-        """Helper to log confirmation prompts."""
         logger.info(f"User Confirmation Prompt: {action_description}")
         return False
 
     def evaluate(self, tool_name: str, permission_level: PermissionLevel) -> SecurityCheckResult:
+        # Check self-modification or privilege escalation attempts
         if permission_level == PermissionLevel.PRIVILEGED:
-            if not self.allow_privileged:
-                logger.warning(f"Access denied: Tool '{tool_name}' requires PRIVILEGED execution, which is disabled.")
-                return SecurityCheckResult(
-                    allowed=False,
-                    permission_level=permission_level,
-                    reason="PRIVILEGED execution is strictly disabled in LALA security policy."
-                )
+            logger.warning(f"Access Denied: Tool '{tool_name}' requested PRIVILEGED execution, which is strictly disabled in LALA policy.")
+            self.audit(user="SYSTEM", tool_name=tool_name, target="SecurityEngine", permission="PRIVILEGED", result="DENIED")
+            return SecurityCheckResult(
+                allowed=False,
+                permission_level=permission_level,
+                reason="PRIVILEGED execution is strictly disabled in LALA security policy."
+            )
 
         if permission_level == PermissionLevel.USER_CONFIRMATION_REQUIRED:
             return SecurityCheckResult(
