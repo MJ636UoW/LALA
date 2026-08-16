@@ -11,19 +11,31 @@ system:
     - "hi" # Hindi
     - "mr" # Marathi
 
+storage:
+  root: "F:\\LALA"
+  models: "F:\\LALA\\Models"
+  ollama_models: "F:\\LALA\\OllamaModels"
+  datasets: "F:\\LALA\\Datasets"
+  memory: "F:\\LALA\\Memory"
+  logs: "F:\\LALA\\Logs"
+  cache: "F:\\LALA\\Cache"
+  backups: "F:\\LALA\\Backups"
+
 security:
   default_permission_level: "READ_ONLY"
   allow_privileged_execution: false
 
 model_router:
-  active_provider: "mock_local"
-  local_runtime: "ollama" # Planned for Phase 2
-  fallback_enabled: true
+  active_provider: "local"
+  local_runtime: "ollama"
+  cloud_fallback: false
   providers:
-    mock_local:
+    local:
       type: "local"
-      model_name: "ollama-placeholder"
-      endpoint: "http://localhost:11434"
+      model_name: "qwen2.5:3b"
+      endpoint: "http://127.0.0.1:11434"
+      temperature: 0.7
+      streaming: true
     mock_gemini:
       type: "gemini"
       model_name: "gemini-flash"

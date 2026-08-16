@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Dict, List, Any
+from typing import Dict, List, Any, Optional
 import yaml
 from pydantic import BaseModel, Field
 
@@ -12,6 +12,16 @@ class SystemConfig(BaseModel):
     default_language: str = "en"
     supported_languages: List[str] = Field(default_factory=lambda: ["en", "hi", "mr"])
 
+class StorageConfig(BaseModel):
+    root: str = "F:\\LALA"
+    models: str = "F:\\LALA\\Models"
+    ollama_models: str = "F:\\LALA\\OllamaModels"
+    datasets: str = "F:\\LALA\\Datasets"
+    memory: str = "F:\\LALA\\Memory"
+    logs: str = "F:\\LALA\\Logs"
+    cache: str = "F:\\LALA\\Cache"
+    backups: str = "F:\\LALA\\Backups"
+
 class SecurityConfig(BaseModel):
     default_permission_level: str = "READ_ONLY"
     allow_privileged_execution: bool = False
@@ -20,21 +30,23 @@ class ProviderConfig(BaseModel):
     type: str
     model_name: str
     endpoint: str | None = None
+    temperature: float = 0.7
+    streaming: bool = True
 
 class ModelRouterConfig(BaseModel):
-    active_provider: str = "mock_local"
+    active_provider: str = "local"
     local_runtime: str = "ollama"
-    fallback_enabled: bool = True
+    cloud_fallback: bool = False
     providers: Dict[str, ProviderConfig] = Field(default_factory=dict)
 
 class LalaConfig(BaseModel):
     system: SystemConfig = Field(default_factory=SystemConfig)
+    storage: StorageConfig = Field(default_factory=StorageConfig)
     security: SecurityConfig = Field(default_factory=SecurityConfig)
     model_router: ModelRouterConfig = Field(default_factory=ModelRouterConfig)
 
 def load_config(config_path: str | Path | None = None) -> LalaConfig:
     if config_path is None:
-        # Default configuration path
         base_dir = Path(__file__).resolve().parent.parent.parent
         config_path = base_dir / "config" / "default_config.yaml"
     

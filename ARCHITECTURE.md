@@ -3,74 +3,64 @@
 System Identity: **LALA**  
 Target User: **Mandar**
 
-This document specifies the internal module contracts and design guidelines for the 12 subsystems of LALA.
+This document specifies internal module contracts and design guidelines for LALA Phase 2.
 
 ---
 
-## Subsystem Details
+## 🏛️ Local Pipeline Execution Flow
+
+```text
+User
+  ↓
+LALA CLI (lala/ui/cli.py)
+  ↓
+Orchestrator (lala/core/orchestrator.py)
+  ↓
+Model Router (lala/core/router.py - Local Privacy Enforced)
+  ↓
+LocalProvider (lala/core/providers/local.py -> http://127.0.0.1:11434)
+  ↓
+Ollama Engine (Model storage: F:\LALA\OllamaModels)
+  ↓
+Local LLM (qwen2.5:3b)
+  ↓
+Response Stream -> LALA
+```
+
+---
+
+## Subsystem Specification
 
 ### 1. Orchestrator (`lala/core/orchestrator.py`)
-- **Role**: Coordinates the core interaction flow.
-- **Responsibilities**:
-  - Receives user input (text or audio transcription).
-  - Maintains active session state and language context.
-  - Constructs system prompt via `PersonalityManager`.
-  - Dispatches queries to `ModelRouter`.
-  - Checks safety policy via `SecurityEngine` before tool execution.
+- Coordinates interaction flow.
+- Maintains session history and multilingual context.
+- Builds prompt via `PersonalityManager`.
+- Dispatches query to `ModelRouter`.
 
 ### 2. Model Router (`lala/core/router.py`)
-- **Role**: Provider abstraction layer.
-- **Providers**:
-  - `LocalProvider` (Ollama for offline processing in Phase 2)
-  - `GeminiProvider`
-  - `ClaudeProvider`
-  - `OpenAICompatibleProvider`
-- **Fallback Logic**: Prioritizes local providers when available or offline mode is requested; falls back to configured cloud endpoints gracefully.
+- Enforces `LocalProvider` (`qwen2.5:3b`) as default.
+- `cloud_fallback: false` strictly enforced.
+- Returns explicit error when local Ollama brain is unreachable, preventing cloud data leaks.
 
-### 3. Memory (`lala/memory/interface.py`)
-- **Role**: Context and memory storage abstraction.
-- **Components**:
-  - `ConversationContext`: In-memory thread history for active sessions.
-  - `MemoryItem`: Abstract schema for persistent key-value and vector memories.
-  - `MemoryStore`: Abstract interface for storage implementations (SQLite/Vector DB in Phase 3).
+### 3. Storage System (`lala/core/config.py`)
+- Codebase & configs: `D:\LALA`
+- AI data root: `F:\LALA`
+  - `F:\LALA\OllamaModels`
+  - `F:\LALA\Models`
+  - `F:\LALA\Datasets`
+  - `F:\LALA\Memory`
+  - `F:\LALA\Logs`
+  - `F:\LALA\Cache`
+  - `F:\LALA\Backups`
 
-### 4. Voice (`lala/voice/interface.py`)
-- **Role**: Multilingual audio processing abstraction.
-- **Interfaces**:
-  - `SpeechToTextInterface`: Input audio stream -> text string conversion.
-  - `TextToSpeechInterface`: Response text string -> output audio stream.
-- *Phase 1 includes lightweight stub contracts.*
+### 4. Security (`lala/security/permissions.py`)
+- Permission levels: `SAFE_AUTOMATIC`, `READ_ONLY`, `USER_CONFIRMATION_REQUIRED`, `PRIVILEGED`.
+- No privileged system execution in Phase 2.
 
-### 5. Tools (`lala/tools/`)
-- **Role**: Extensible tool execution framework.
-- **Structure**:
-  - `Tool`: Base class with explicit name, description, parameters, and `PermissionLevel`.
-  - `ToolRegistry`: Registry managing registered tools and enforcing authorization before invocation.
+### 5. Personality / Emotion (`lala/personality/emotion.py`)
+- Identity: `LALA` serving `Mandar`.
+- Persona: intelligent, calm, helpful, technically precise, subtly witty, honest about limitations.
+- Multilingual instructions for English, Hindi (हिंदी), and Marathi (मराठी) code-switching.
 
-### 6. API Registry (`lala/api/registry.py`)
-- **Role**: Manages model provider endpoints, capability flags, and service metadata.
-
-### 7. Security (`lala/security/permissions.py`)
-- **Role**: Safety and access control engine.
-- **Permission Levels**:
-  1. `SAFE_AUTOMATIC`: Read-only system queries, formatting, basic logic.
-  2. `READ_ONLY`: File reading, search operations.
-  3. `USER_CONFIRMATION_REQUIRED`: Modifying files, sending network requests.
-  4. `PRIVILEGED`: System/shell administrative execution (Disabled in Phase 1).
-
-### 8. Personality / Emotion (`lala/personality/emotion.py`)
-- **Role**: Enforces system identity ("LALA") and user relationship ("Mandar").
-- **Language Mode**: Embeds dynamic instructions for English, Hindi (हिंदी), and Marathi (मराठी) code-switching.
-
-### 9. Subagents (`lala/subagents/base.py`)
-- **Role**: Multi-agent task decomposition and delegation abstraction.
-- **Base Class**: `BaseSubagent` defining `run()` and status lifecycle.
-
-### 10. Configuration (`lala/core/config.py`)
-- **Role**: Strongly typed configuration management using Pydantic and PyYAML reading `config/default_config.yaml`.
-
-### 11. Logging (`lala/utils/logging.py`)
-- **Role**: Structured console logging utility.
-
-### 12. UI (`lala/ui/cli.py`)
-- **Role**: User-facing Rich terminal interface supporting interactive messaging, language context indicators, and clean session shutdown.
+### 6. Memory & Voice Interfaces (`lala/memory/`, `lala/voice/`)
+- Abstract interfaces for Phase 3 (RAG) and Phase 4 (Audio pipeline).
