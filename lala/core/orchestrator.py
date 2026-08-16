@@ -14,19 +14,23 @@ from lala.agent.planner import TaskPlanner
 from lala.agent.executor import AgentExecutor, MAX_AGENT_STEPS
 from lala.intelligence.manager import IntelligenceManager
 from lala.investigation.manager import InvestigationManager
+from lala.llm.manager import LocalLLMManager
+from lala.utils.logging import logger
 
 MAX_TOOL_ITERATIONS = 5
 
 class Orchestrator:
     """
-    Central pipeline orchestrator for LALA Phase 6.
-    Coordinates User Goal -> Memory -> Workspace -> Intelligence -> Structured Task Planner -> Security Engine -> Tool Executor -> Investigation -> Response.
+    Central pipeline orchestrator for LALA Phase 8.
+    Coordinates User Goal -> Memory -> Workspace -> Local LLM Manager -> Security Engine -> Tool Executor -> Investigation -> Response.
+    Enforces 100% Local Inference, Zero Cloud LLM Fallback, and Privacy.
     """
     def __init__(self, config: Optional[LalaConfig] = None):
         self.config = config or load_config()
         self.personality = PersonalityManager()
         self.security = SecurityEngine(allow_privileged=self.config.security.allow_privileged_execution)
         self.router = ModelRouter(config=self.config.model_router)
+        self.local_llm_manager = LocalLLMManager()
         self.intel_manager = IntelligenceManager(online_enabled=self.config.security.online_intelligence_enabled)
         self.investigation_manager = InvestigationManager()
         self.tools = ToolRegistry(security_engine=self.security, intel_manager=self.intel_manager)
