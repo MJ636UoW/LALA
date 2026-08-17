@@ -3,6 +3,7 @@ import threading
 from typing import List, Optional, Dict, Any
 from pathlib import Path
 from lala.memory.models import PersistentMemoryItem, MemoryCategory, MemoryType
+from lala.core.config import sanitize_storage_path
 from lala.utils.logging import logger
 
 class SQLiteMemoryStore:
@@ -11,12 +12,15 @@ class SQLiteMemoryStore:
     Target Database Path: F:\\LALA\\Memory\\lala_memory.db.
     """
     def __init__(self, db_path: str = "F:\\LALA\\Memory\\lala_memory.db"):
-        self.db_path = Path(db_path)
+        self.db_path = Path(sanitize_storage_path(db_path))
         self._lock = threading.Lock()
         self._init_db()
 
     def _get_connection(self) -> sqlite3.Connection:
-        self.db_path.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            self.db_path.parent.mkdir(parents=True, exist_ok=True)
+        except Exception:
+            pass
         conn = sqlite3.connect(str(self.db_path), check_same_thread=False)
         conn.row_factory = sqlite3.Row
         return conn

@@ -18,7 +18,10 @@ class LocalRAGIndex:
         self._init_db()
 
     def _get_connection(self) -> sqlite3.Connection:
-        os.makedirs(os.path.dirname(self.db_path), exist_ok=True)
+        try:
+            os.makedirs(os.path.dirname(self.db_path), exist_ok=True)
+        except Exception:
+            pass
         conn = sqlite3.connect(self.db_path)
         conn.row_factory = sqlite3.Row
         return conn
@@ -61,16 +64,26 @@ class LocalRAGIndex:
 
     def add_document(self, doc: Document, chunks: List[Chunk]) -> bool:
         try:
+            category_str = doc.metadata.get("category", "GENERAL") if isinstance(doc.metadata, dict) else "GENERAL"
+            if hasattr(category_str, "value"):
+                category_str = category_str.value
+            source_path = getattr(doc, "source_path", getattr(doc, "filepath", "unknown"))
+            created_at = getattr(doc, "imported_at", getattr(doc, "created_at", ""))
+
             with self._get_connection() as conn:
                 cursor = conn.cursor()
                 cursor.execute(
                     "INSERT OR REPLACE INTO documents VALUES (?, ?, ?, ?, ?, ?, ?)",
-                    (doc.document_id, doc.title, doc.category.value, doc.filepath, doc.created_at, doc.chunk_count, doc.sha256)
+                    (doc.document_id, doc.title, str(category_str), source_path, created_at, len(chunks), doc.sha256)
                 )
                 for chunk in chunks:
+                    tok_cnt = getattr(chunk, "token_estimate", getattr(chunk, "token_count", len(chunk.text) // 4))
+                    start_c = chunk.metadata.get("start_char", 0) if isinstance(chunk.metadata, dict) else 0
+                    end_c = chunk.metadata.get("end_char", len(chunk.text)) if isinstance(chunk.metadata, dict) else len(chunk.text)
+
                     cursor.execute(
                         "INSERT OR REPLACE INTO chunks VALUES (?, ?, ?, ?, ?, ?, ?)",
-                        (chunk.chunk_id, chunk.document_id, chunk.chunk_index, chunk.text, chunk.token_count, chunk.start_char, chunk.end_char)
+                        (chunk.chunk_id, chunk.document_id, chunk.chunk_index, chunk.text, tok_cnt, start_c, end_c)
                     )
                     cursor.execute(
                         "INSERT OR REPLACE INTO chunks_fts (chunk_id, document_id, text) VALUES (?, ?, ?)",
@@ -81,6 +94,22 @@ class LocalRAGIndex:
         except Exception as e:
             logger.error(f"LocalRAGIndex Add Document Error: {e}")
             return False
+
+    def add_document_and_chunks(self, doc: Document, chunks: List[Chunk]) -> bool:
+        return self.add_document(doc, chunks)
+
+    def list_documents(self) -> List[Dict[str, Any]]:
+        docs = []
+        try:
+            with self._get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute("SELECT document_id, title, category, filepath, created_at, chunk_count, sha256 FROM documents")
+                rows = cursor.fetchall()
+                for r in rows:
+                    docs.append(dict(r))
+        except Exception as e:
+            logger.error(f"LocalRAGIndex List Documents Error: {e}")
+        return docs
 
     def search_fts(self, query: str, top_k: int = 8) -> List[SearchResult]:
         cleaned_query = "".join(c if c.isalnum() or c.isspace() else " " for c in query).strip()
@@ -105,16 +134,18 @@ class LocalRAGIndex:
                         chunk_id=row["chunk_id"],
                         document_id=row["document_id"],
                         document_title=row["title"],
-                        category=row["category"],
-                        filepath=row["filepath"],
                         text=row["text"],
-                        relevance_score=round(1.0 - (rank * 0.05), 2)
+                        relevance_score=round(1.0 - (rank * 0.05), 2),
+                        metadata={"category": row["category"], "filepath": row["filepath"]}
                     )
                     results.append(res)
         except Exception as e:
             logger.error(f"LocalRAGIndex FTS Search Error: {e}")
 
         return results
+
+    def search_keyword(self, query: str, top_k: int = 8) -> List[SearchResult]:
+        return self.search_fts(query, top_k=top_k)
 
     def clear(self) -> bool:
         try:
