@@ -1,3 +1,4 @@
+import os
 from typing import Optional, List
 from lala.core.config import LalaConfig, load_config
 from lala.core.state import SessionState, LanguageCode
@@ -41,7 +42,9 @@ class Orchestrator:
         self.planner = ToolPlanner()
         self.executor = ToolExecutor(registry=self.tools)
         self.memory = MemoryManager(db_path=self.config.storage.memory_path)
-        self.workspace_scanner = WorkspaceScanner(root_path="D:\\LALA")
+        
+        default_root = "D:\\LALA" if os.path.exists("D:\\LALA") else os.path.realpath(os.getcwd())
+        self.workspace_scanner = WorkspaceScanner(root_path=default_root)
         self.task_planner = TaskPlanner()
         self.agent_executor = AgentExecutor(executor=self.executor)
         self.state = SessionState(
@@ -57,7 +60,8 @@ class Orchestrator:
         self.state.add_message("user", user_input, language=self.state.language_context.primary_language)
         
         # 1. Retrieve workspace context & persistent memories & local RAG evidence
-        ws_ctx = self.workspace_scanner.scan("D:\\LALA")
+        target_dir = "D:\\LALA" if os.path.exists("D:\\LALA") else os.path.realpath(os.getcwd())
+        ws_ctx = self.workspace_scanner.scan(target_dir)
         ws_prompt_block = format_workspace_prompt_context(ws_ctx)
 
         retrieved_memories = self.memory.search_memory(user_input, limit=3)

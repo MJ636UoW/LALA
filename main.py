@@ -10,7 +10,13 @@ app = FastAPI(
     version="0.1.0"
 )
 
-orchestrator: Optional[Orchestrator] = None
+_orchestrator_instance: Optional[Orchestrator] = None
+
+def get_orchestrator() -> Orchestrator:
+    global _orchestrator_instance
+    if _orchestrator_instance is None:
+        _orchestrator_instance = Orchestrator()
+    return _orchestrator_instance
 
 class ChatRequest(BaseModel):
     prompt: str
@@ -18,14 +24,6 @@ class ChatRequest(BaseModel):
 class ChatResponse(BaseModel):
     response: str
     status: str = "success"
-
-@app.on_event("startup")
-def startup_event():
-    global orchestrator
-    try:
-        orchestrator = Orchestrator()
-    except Exception as e:
-        print(f"Warning: Orchestrator initialization error: {e}")
 
 @app.get("/")
 def read_root():
@@ -41,12 +39,9 @@ def health_check():
 
 @app.post("/chat", response_model=ChatResponse)
 def chat_endpoint(req: ChatRequest):
-    global orchestrator
-    if not orchestrator:
-        try:
-            orchestrator = Orchestrator()
-        except Exception as e:
-            raise HTTPException(status_code=500, detail=f"Orchestrator error: {e}")
-
-    resp = orchestrator.process_user_input(req.prompt)
-    return ChatResponse(response=resp)
+    try:
+        orch = get_orchestrator()
+        resp = orch.process_user_input(req.prompt)
+        return ChatResponse(response=resp)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Orchestrator error: {str(e)}")

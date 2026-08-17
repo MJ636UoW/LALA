@@ -7,11 +7,17 @@ from lala.tools.base import Tool, ToolResult
 from lala.security.permissions import PermissionLevel
 
 # Allowed workspace roots for LALA operations
-ALLOWED_WORKSPACE_ROOTS = [
-    os.path.realpath("D:\\LALA").lower(),
-    os.path.realpath("D:\\Projects").lower() if os.path.exists("D:\\Projects") else "d:\\projects",
-    os.path.realpath("F:\\LALA").lower()
-]
+def get_allowed_workspace_roots() -> list[str]:
+    roots = [
+        os.path.realpath("D:\\LALA").lower(),
+        os.path.realpath("D:\\Projects").lower() if os.path.exists("D:\\Projects") else "d:\\projects",
+        os.path.realpath("F:\\LALA").lower(),
+        os.path.realpath(os.getcwd()).lower(),
+        os.path.realpath(os.environ.get("TEMP", "C:\\AppData\\Local\\Temp")).lower()
+    ]
+    return roots
+
+ALLOWED_WORKSPACE_ROOTS = get_allowed_workspace_roots()
 
 # Explicitly forbidden system directory prefixes (canonical lower-case)
 FORBIDDEN_SYSTEM_DIRS = [
@@ -64,7 +70,7 @@ def is_path_safe(target_path: str, allow_test_tmp: bool = True) -> bool:
 
     # 6. Check workspace boundary containment
     is_in_workspace = False
-    for root in ALLOWED_WORKSPACE_ROOTS:
+    for root in get_allowed_workspace_roots():
         if canonical == root or canonical.startswith(root + os.sep):
             is_in_workspace = True
             break
