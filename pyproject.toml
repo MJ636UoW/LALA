@@ -21,3 +21,7 @@ dependencies = [
 
 [project.scripts]
 lala = "lala.main:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["lala*"]
