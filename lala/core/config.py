@@ -4,6 +4,18 @@ from typing import Dict, List, Any, Optional
 import yaml
 from pydantic import BaseModel, Field
 
+def sanitize_storage_path(target_path: str) -> str:
+    """Fallback to user home directory if specified drive (e.g. F:\\) does not exist on host system."""
+    try:
+        drive, _ = os.path.splitdrive(target_path)
+        if drive and not os.path.exists(drive + os.sep):
+            home_fallback = os.path.expanduser("~/.lala")
+            rel = target_path[len(drive):].lstrip("\\/")
+            return os.path.join(home_fallback, rel)
+    except Exception:
+        pass
+    return target_path
+
 class SystemConfig(BaseModel):
     name: str = "LALA"
     call_name: str = "LALA"
@@ -25,7 +37,8 @@ class StorageConfig(BaseModel):
 
     @property
     def memory_path(self) -> str:
-        return os.path.join(self.memory, "lala_memory.db")
+        base_mem = sanitize_storage_path(self.memory)
+        return os.path.join(base_mem, "lala_memory.db")
 
 class SecurityConfig(BaseModel):
     default_permission_level: str = "READ_ONLY"

@@ -1,6 +1,7 @@
 from abc import ABC, abstractmethod
 from typing import List, Optional
 from pathlib import Path
+from lala.core.config import sanitize_storage_path
 from lala.utils.logging import logger
 
 class EmbeddingProvider(ABC):
@@ -19,8 +20,11 @@ class LocalEmbeddingProvider(EmbeddingProvider):
     Gracefully falls back to keyword/FTS search if embedding models are not installed.
     """
     def __init__(self, model_dir: str = "F:\\LALA\\Models\\Embeddings"):
-        self.model_dir = Path(model_dir)
-        self.model_dir.mkdir(parents=True, exist_ok=True)
+        self.model_dir = Path(sanitize_storage_path(model_dir))
+        try:
+            self.model_dir.mkdir(parents=True, exist_ok=True)
+        except Exception:
+            pass
 
     def embed_text(self, text: str) -> List[float]:
         # Simple deterministic hash embedding stub for local fallback

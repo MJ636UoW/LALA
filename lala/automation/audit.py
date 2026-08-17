@@ -2,6 +2,7 @@ import os
 import json
 from datetime import datetime, timezone
 from typing import Dict, Any
+from lala.core.config import sanitize_storage_path
 from lala.utils.logging import logger
 
 SECRET_KEYS = ["api_key", "secret", "password", "token", "auth", "virustotal_key", "abuseipdb_key", "otx_key", "nvd_key"]
@@ -13,7 +14,7 @@ class AutomationAuditLogger:
     Sanitizes raw secrets and credentials.
     """
     def __init__(self, log_path: str = "F:\\LALA\\Logs\\lala_automation.log"):
-        self.log_path = log_path
+        self.log_path = sanitize_storage_path(log_path)
         self._init_dir()
 
     def _init_dir(self):

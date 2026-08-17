@@ -4,6 +4,7 @@ import os
 from pathlib import Path
 from typing import List, Dict, Any, Optional
 from lala.rag.models import Document, Chunk, SearchResult
+from lala.core.config import sanitize_storage_path
 from lala.utils.logging import logger
 
 class LocalRAGIndex:
@@ -13,7 +14,7 @@ class LocalRAGIndex:
     Stored locally under F:\\LALA\\Knowledge\\indexes\\lala_rag_index.db.
     """
     def __init__(self, db_path: str = "F:\\LALA\\Knowledge\\indexes\\lala_rag_index.db"):
-        self.db_path = db_path
+        self.db_path = sanitize_storage_path(db_path)
         self._init_db()
 
     def _get_connection(self) -> sqlite3.Connection:
@@ -28,124 +29,102 @@ class LocalRAGIndex:
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS documents (
                     document_id TEXT PRIMARY KEY,
-                    source_path TEXT,
-                    source_type TEXT,
-                    sha256 TEXT UNIQUE,
-                    file_size INTEGER,
-                    title TEXT,
-                    metadata_json TEXT,
-                    imported_at TEXT
-                );
+                    title TEXT NOT NULL,
+                    category TEXT NOT NULL,
+                    filepath TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    chunk_count INTEGER NOT NULL,
+                    sha256 TEXT NOT NULL
+                )
             """)
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS chunks (
                     chunk_id TEXT PRIMARY KEY,
-                    document_id TEXT,
-                    chunk_index INTEGER,
-                    text TEXT,
-                    token_estimate INTEGER,
-                    metadata_json TEXT,
-                    FOREIGN KEY(document_id) REFERENCES documents(document_id)
-                );
+                    document_id TEXT NOT NULL,
+                    chunk_index INTEGER NOT NULL,
+                    text TEXT NOT NULL,
+                    token_count INTEGER NOT NULL,
+                    start_char INTEGER NOT NULL,
+                    end_char INTEGER NOT NULL,
+                    FOREIGN KEY (document_id) REFERENCES documents (document_id)
+                )
             """)
+            # Create FTS5 virtual table for keyword search
             cursor.execute("""
                 CREATE VIRTUAL TABLE IF NOT EXISTS chunks_fts USING fts5(
                     chunk_id UNINDEXED,
                     document_id UNINDEXED,
-                    title,
                     text
-                );
+                )
             """)
             conn.commit()
 
-    def add_document_and_chunks(self, doc: Document, chunks: List[Chunk]) -> bool:
-        with self._get_connection() as conn:
-            cursor = conn.cursor()
-            try:
-                cursor.execute("""
-                    INSERT OR REPLACE INTO documents 
-                    (document_id, source_path, source_type, sha256, file_size, title, metadata_json, imported_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                """, (doc.document_id, doc.source_path, doc.source_type, doc.sha256, doc.file_size, doc.title, json.dumps(doc.metadata), doc.imported_at))
-
-                for c in chunks:
-                    cursor.execute("""
-                        INSERT OR REPLACE INTO chunks
-                        (chunk_id, document_id, chunk_index, text, token_estimate, metadata_json)
-                        VALUES (?, ?, ?, ?, ?, ?)
-                    """, (c.chunk_id, c.document_id, c.chunk_index, c.text, c.token_estimate, json.dumps(c.metadata)))
-
-                    cursor.execute("""
-                        INSERT OR REPLACE INTO chunks_fts (chunk_id, document_id, title, text)
-                        VALUES (?, ?, ?, ?)
-                    """, (c.chunk_id, c.document_id, doc.title, c.text))
-
+    def add_document(self, doc: Document, chunks: List[Chunk]) -> bool:
+        try:
+            with self._get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    "INSERT OR REPLACE INTO documents VALUES (?, ?, ?, ?, ?, ?, ?)",
+                    (doc.document_id, doc.title, doc.category.value, doc.filepath, doc.created_at, doc.chunk_count, doc.sha256)
+                )
+                for chunk in chunks:
+                    cursor.execute(
+                        "INSERT OR REPLACE INTO chunks VALUES (?, ?, ?, ?, ?, ?, ?)",
+                        (chunk.chunk_id, chunk.document_id, chunk.chunk_index, chunk.text, chunk.token_count, chunk.start_char, chunk.end_char)
+                    )
+                    cursor.execute(
+                        "INSERT OR REPLACE INTO chunks_fts (chunk_id, document_id, text) VALUES (?, ?, ?)",
+                        (chunk.chunk_id, chunk.document_id, chunk.text)
+                    )
                 conn.commit()
                 return True
-            except Exception as e:
-                logger.error(f"LocalRAGIndex Insert Error: {e}")
-                return False
+        except Exception as e:
+            logger.error(f"LocalRAGIndex Add Document Error: {e}")
+            return False
 
-    def search_keyword(self, query: str, limit: int = 8) -> List[SearchResult]:
-        if not query or not query.strip():
-            return []
-
-        cleaned_query = "".join([c if c.isalnum() or c.isspace() else " " for c in query]).strip()
+    def search_fts(self, query: str, top_k: int = 8) -> List[SearchResult]:
+        cleaned_query = "".join(c if c.isalnum() or c.isspace() else " " for c in query).strip()
         if not cleaned_query:
             return []
 
-        fts_query = " OR ".join(cleaned_query.split())
-        results: List[SearchResult] = []
-
-        with self._get_connection() as conn:
-            cursor = conn.cursor()
-            try:
+        results = []
+        try:
+            with self._get_connection() as conn:
+                cursor = conn.cursor()
+                # Query FTS5 matching chunks
                 cursor.execute("""
-                    SELECT f.chunk_id, f.document_id, f.title, c.text, c.metadata_json, rank
+                    SELECT f.chunk_id, f.document_id, f.text, d.title, d.category, d.filepath
                     FROM chunks_fts f
-                    JOIN chunks c ON f.chunk_id = c.chunk_id
+                    JOIN documents d ON f.document_id = d.document_id
                     WHERE chunks_fts MATCH ?
-                    ORDER BY rank ASC
                     LIMIT ?
-                """, (fts_query, limit))
-
+                """, (cleaned_query, top_k))
                 rows = cursor.fetchall()
-                for r in rows:
-                    score = abs(float(r["rank"])) if r["rank"] else 1.0
-                    normalized_score = min(1.0, max(0.1, 1.0 / (1.0 + score)))
-                    meta = json.loads(r["metadata_json"]) if r["metadata_json"] else {}
-                    results.append(SearchResult(
-                        chunk_id=r["chunk_id"],
-                        document_id=r["document_id"],
-                        document_title=r["title"],
-                        text=r["text"],
-                        relevance_score=round(normalized_score, 4),
-                        metadata=meta
-                    ))
-            except Exception as e:
-                logger.error(f"LocalRAGIndex Search Error: {e}")
+                for rank, row in enumerate(rows, start=1):
+                    res = SearchResult(
+                        chunk_id=row["chunk_id"],
+                        document_id=row["document_id"],
+                        document_title=row["title"],
+                        category=row["category"],
+                        filepath=row["filepath"],
+                        text=row["text"],
+                        relevance_score=round(1.0 - (rank * 0.05), 2)
+                    )
+                    results.append(res)
+        except Exception as e:
+            logger.error(f"LocalRAGIndex FTS Search Error: {e}")
 
         return results
 
-    def list_documents(self) -> List[Dict[str, Any]]:
-        with self._get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute("SELECT document_id, title, source_path, file_size, imported_at FROM documents")
-            return [dict(r) for r in cursor.fetchall()]
-
-    def delete_document(self, document_id: str) -> bool:
-        with self._get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute("DELETE FROM chunks_fts WHERE document_id = ?", (document_id,))
-            cursor.execute("DELETE FROM chunks WHERE document_id = ?", (document_id,))
-            cursor.execute("DELETE FROM documents WHERE document_id = ?", (document_id,))
-            conn.commit()
-            return True
-
-    def clear(self):
-        with self._get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute("DELETE FROM chunks_fts")
-            cursor.execute("DELETE FROM chunks")
-            cursor.execute("DELETE FROM documents")
-            conn.commit()
+    def clear(self) -> bool:
+        try:
+            with self._get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute("DELETE FROM documents")
+                cursor.execute("DELETE FROM chunks")
+                cursor.execute("DELETE FROM chunks_fts")
+                conn.commit()
+                return True
+        except Exception as e:
+            logger.error(f"LocalRAGIndex Clear Error: {e}")
+            return False
