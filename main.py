@@ -5,20 +5,28 @@ from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 from typing import Optional, List, Dict, Any
 from lala.core.orchestrator import Orchestrator
+from lala.malware.dynamic_analyzer import DynamicMalwareAnalyzer
 
 app = FastAPI(
     title="LALA API",
     description="LALA Cybersecurity AI Operating Assistant API & JARVIS HUD",
-    version="0.3.0"
+    version="0.4.0"
 )
 
 _orchestrator_instance: Optional[Orchestrator] = None
+_dynamic_analyzer_instance: Optional[DynamicMalwareAnalyzer] = None
 
 def get_orchestrator() -> Orchestrator:
     global _orchestrator_instance
     if _orchestrator_instance is None:
         _orchestrator_instance = Orchestrator()
     return _orchestrator_instance
+
+def get_dynamic_analyzer() -> DynamicMalwareAnalyzer:
+    global _dynamic_analyzer_instance
+    if _dynamic_analyzer_instance is None:
+        _dynamic_analyzer_instance = DynamicMalwareAnalyzer()
+    return _dynamic_analyzer_instance
 
 class ChatRequest(BaseModel):
     prompt: str
@@ -34,7 +42,7 @@ JARVIS_HUD_HTML = """<!DOCTYPE html>
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>LALA — JARVIS Pentester & AI Partner</title>
+    <title>LALA — JARVIS Pentester & Malware Analysis HUD</title>
     <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;800;900&family=Fira+Code:wght@400;600&family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -135,7 +143,7 @@ JARVIS_HUD_HTML = """<!DOCTYPE html>
             min-height: calc(100vh - 80px);
         }
 
-        /* Left Sidebar: Recent Chats & File Upload Panel */
+        /* Left Sidebar: Recent Chats & Sandbox Controls */
         .sidebar-panel {
             width: 300px;
             background: rgba(10, 20, 38, 0.7);
@@ -282,7 +290,7 @@ JARVIS_HUD_HTML = """<!DOCTYPE html>
             box-shadow: 0 0 30px #00F0FF;
         }
 
-        /* Right Panel: HUD Chat Interface */
+        /* Right Panel: HUD Chat & Telemetry Interface */
         .hud-chat-panel {
             flex: 1.4;
             background: rgba(10, 20, 38, 0.7);
@@ -397,11 +405,11 @@ JARVIS_HUD_HTML = """<!DOCTYPE html>
 <body>
     <header>
         <div class="hud-logo">
-            ⚡ LALA — PENTESTER & AI PARTNER
+            ⚡ LALA — MALWARE ANALYSIS & PENTEST HUD
         </div>
         <div class="status-badge">
             <div class="dot"></div>
-            SYSTEM ONLINE | MULTI-SESSION MEMORY ACTIVE
+            gVISOR SANDBOX ACTIVE | PROCMON & WIRESHARK ON
         </div>
         <div class="hud-links">
             <a href="/docs" target="_blank">API DOCS</a>
@@ -409,14 +417,16 @@ JARVIS_HUD_HTML = """<!DOCTYPE html>
         </div>
     </header>
     <main>
-        <!-- Left Sidebar: Recent Chats & Actions -->
+        <!-- Left Sidebar: Recent Chats & Sandbox Trigger -->
         <div class="sidebar-panel">
-            <button class="new-chat-btn" onclick="startNewChat()">+ NEW CHAT SESSION</button>
+            <button class="new-chat-btn" onclick="startNewChat()">+ NEW PENTEST SESSION</button>
+            <button class="new-chat-btn" style="background: rgba(255,215,0,0.15); border-color: #FFD700; color: #FFD700;" onclick="triggerSandboxAnalysis()">🔬 DETONATE IN gVISOR</button>
+            
             <div class="recent-title">RECENT CONVERSATIONS</div>
             <div class="recent-chats-list" id="recentChats">
                 <div class="chat-item active" onclick="switchSession('default', this)">🛡️ Main Pentest Partner</div>
-                <div class="chat-item" onclick="switchSession('malware_analysis', this)">🔬 Malware Analysis</div>
-                <div class="chat-item" onclick="switchSession('reverse_engineering', this)">⚙️ CFF & PE Reverse Eng</div>
+                <div class="chat-item" onclick="switchSession('malware_analysis', this)">🔬 Malware Analysis & PE</div>
+                <div class="chat-item" onclick="switchSession('reverse_engineering', this)">⚙️ ProcMon & Wireshark</div>
             </div>
         </div>
 
@@ -438,16 +448,16 @@ JARVIS_HUD_HTML = """<!DOCTYPE html>
         <!-- Right: HUD Terminal Panel -->
         <div class="hud-chat-panel">
             <div class="chat-header">
-                <span>🖥️ COMMAND TERMINAL & THREAT MONITOR</span>
+                <span>🖥️ COMMAND TERMINAL & TELEMETRY MONITOR</span>
                 <button class="reset-btn" onclick="resetTopic()">🔄 RESET TOPIC</button>
             </div>
             <div class="chat-messages" id="messages">
-                <div class="msg jarvis">🤖 Pentester AI Partner Online. Conversation memory active. Upload documents or ask technical questions below.</div>
+                <div class="msg jarvis">🤖 Pentester AI Partner Online. gVisor Sandbox, ProcMon Telemetry & Wireshark network packet analysis active. Upload binary or ask technical questions below.</div>
             </div>
             <div class="input-bar">
                 <input type="file" id="fileInput" style="display: none;" onchange="uploadFile()">
                 <button class="upload-icon-btn" onclick="document.getElementById('fileInput').click()" title="Upload File / Document">📎</button>
-                <input type="text" id="userInput" placeholder="Ask LALA or type 'end of topic'..." onkeypress="handleKey(event)">
+                <input type="text" id="userInput" placeholder="Ask LALA, type 'end of topic', or ask to analyze sample..." onkeypress="handleKey(event)">
                 <button class="jarvis-btn" onclick="sendMessage()">TRANSMIT</button>
             </div>
         </div>
@@ -486,6 +496,29 @@ JARVIS_HUD_HTML = """<!DOCTYPE html>
         function resetTopic() {
             document.getElementById('userInput').value = 'end of topic';
             sendMessage();
+        }
+
+        async function triggerSandboxAnalysis() {
+            const msgs = document.getElementById('messages');
+            const jDiv = document.createElement('div');
+            jDiv.className = 'msg jarvis';
+            jDiv.textContent = '🔬 gVisor Sandbox Detonating Sample... Capturing ProcMon process creation & Wireshark PCAP packets...';
+            msgs.appendChild(jDiv);
+            msgs.scrollTop = msgs.scrollHeight;
+
+            try {
+                const res = await fetch('/sandbox/analyze', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ file_name: 'Pokemon_Brock.exe' })
+                });
+                const data = await res.json();
+                jDiv.textContent = data.summary || 'Sandbox detonation completed.';
+                if (isVoiceActive) speakText('gVisor sandbox detonation analysis complete.');
+            } catch (err) {
+                jDiv.textContent = '❌ Sandbox execution error.';
+            }
+            msgs.scrollTop = msgs.scrollHeight;
         }
 
         function initVoice() {
@@ -581,7 +614,7 @@ JARVIS_HUD_HTML = """<!DOCTYPE html>
 
             const jDiv = document.createElement('div');
             jDiv.className = 'msg jarvis';
-            jDiv.textContent = '🔬 LALA Analyzing Document / File...';
+            jDiv.textContent = '🔬 LALA Static PE Analysis & gVisor Sandbox Detonation...';
             msgs.appendChild(jDiv);
             msgs.scrollTop = msgs.scrollHeight;
 
@@ -650,6 +683,10 @@ JARVIS_HUD_HTML = """<!DOCTYPE html>
 </html>
 """
 
+class SandboxAnalyzeRequest(BaseModel):
+    file_name: str = "sample.exe"
+    file_path: Optional[str] = None
+
 @app.get("/", response_class=HTMLResponse)
 def read_root():
     return JARVIS_HUD_HTML
@@ -659,7 +696,7 @@ def api_status():
     return {
         "status": "online",
         "system": "LALA JARVIS Cybersecurity Assistant",
-        "version": "0.3.0"
+        "version": "0.4.0"
     }
 
 @app.get("/health")
@@ -675,6 +712,24 @@ def chat_endpoint(req: ChatRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Orchestrator error: {str(e)}")
 
+@app.post("/sandbox/analyze")
+def sandbox_analyze_endpoint(req: SandboxAnalyzeRequest):
+    try:
+        analyzer = get_dynamic_analyzer()
+        target_path = req.file_path or req.file_name
+        report = analyzer.run_full_analysis(target_path, sample_name=req.file_name)
+        return {
+            "report_id": report.report_id,
+            "file_name": report.file_name,
+            "threat_level": report.threat_level.value,
+            "summary": report.summary,
+            "static_results": report.static_results.model_dump() if report.static_results else {},
+            "dynamic_results": report.dynamic_results.model_dump() if report.dynamic_results else {},
+            "status": "success"
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Sandbox analysis failed: {str(e)}")
+
 @app.post("/upload")
 async def upload_file_endpoint(file: UploadFile = File(...), session_id: str = Form("default")):
     try:
@@ -682,7 +737,6 @@ async def upload_file_endpoint(file: UploadFile = File(...), session_id: str = F
         content_bytes = await file.read()
         filename = file.filename or "uploaded_file"
         
-        # Read text or summarize content
         text_content = ""
         try:
             text_content = content_bytes.decode("utf-8", errors="replace")[:10000]

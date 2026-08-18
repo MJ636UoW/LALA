@@ -16,6 +16,8 @@ from lala.tools.mitre_tool import MitreLookupTool
 from lala.tools.investigate_tool import InvestigateTool
 from lala.tools.yara_tool import YaraScanTool
 from lala.tools.sigma_tool import SigmaTool
+from lala.tools.terminal import SandboxedTerminalTool
+from lala.tools.malware_tools import StaticAnalysisTool, DynamicSandboxTool
 from lala.intelligence.manager import IntelligenceManager
 from lala.investigation.investigation_engine import InvestigationEngine
 from lala.detection.yara_engine import YaraEngine
@@ -54,7 +56,10 @@ class ToolRegistry:
             MitreLookupTool(),
             InvestigateTool(engine=self.investigation_engine),
             YaraScanTool(engine=self.yara_engine),
-            SigmaTool(engine=self.sigma_engine)
+            SigmaTool(engine=self.sigma_engine),
+            SandboxedTerminalTool(),
+            StaticAnalysisTool(),
+            DynamicSandboxTool()
         ]
         for t in default_tools:
             self.register_tool(t)
