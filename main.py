@@ -49,7 +49,6 @@ JARVIS_HUD_HTML = """<!DOCTYPE html>
                 repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0, 240, 255, 0.03) 3px, transparent 4px);
         }
 
-        /* Top HUD Navigation Header */
         header {
             background: rgba(10, 20, 38, 0.8);
             border-bottom: 2px solid rgba(0, 240, 255, 0.3);
@@ -100,7 +99,6 @@ JARVIS_HUD_HTML = """<!DOCTYPE html>
         }
         .hud-links a:hover { color: #00F0FF; text-shadow: 0 0 10px #00F0FF; }
 
-        /* Main JARVIS Container */
         main {
             flex: 1;
             display: flex;
@@ -111,7 +109,6 @@ JARVIS_HUD_HTML = """<!DOCTYPE html>
             margin: 0 auto;
         }
 
-        /* Left Side Panel: JARVIS Arc Reactor & Audio Visualizer */
         .jarvis-core-panel {
             flex: 1;
             background: rgba(10, 20, 38, 0.6);
@@ -126,7 +123,6 @@ JARVIS_HUD_HTML = """<!DOCTYPE html>
             box-shadow: inset 0 0 30px rgba(0, 240, 255, 0.1);
         }
 
-        /* Holographic Arc Reactor Ring */
         .arc-reactor {
             width: 260px;
             height: 260px;
@@ -194,7 +190,6 @@ JARVIS_HUD_HTML = """<!DOCTYPE html>
             box-shadow: 0 0 30px #00F0FF;
         }
 
-        /* Right Panel: HUD Chat Interface */
         .hud-chat-panel {
             flex: 1.2;
             background: rgba(10, 20, 38, 0.7);
@@ -276,7 +271,7 @@ JARVIS_HUD_HTML = """<!DOCTYPE html>
         </div>
         <div class="status-badge">
             <div class="dot"></div>
-            SYSTEM ONLINE | CLAP & VOICE ACTIVE
+            SYSTEM ONLINE | GEMINI ACTIVE
         </div>
         <div class="hud-links">
             <a href="/docs" target="_blank">API DOCS</a>
@@ -284,7 +279,6 @@ JARVIS_HUD_HTML = """<!DOCTYPE html>
         </div>
     </header>
     <main>
-        <!-- Left: JARVIS Arc Reactor & Audio Visualizer Panel -->
         <div class="jarvis-core-panel">
             <div class="arc-reactor" id="arcReactor">
                 <div class="arc-reactor-inner">
@@ -292,20 +286,19 @@ JARVIS_HUD_HTML = """<!DOCTYPE html>
                 </div>
             </div>
             <div class="voice-status-text" id="voiceStatus">
-                👏 CLAP HANDS OR SAY "LALA" TO WAKE UP
+                ⚡ PRESS TOGGLE VOICE MODE TO ACTIVATE MIC
             </div>
             <div class="voice-controls">
-                <button class="jarvis-btn" onclick="toggleVoiceMode()">🎤 TOGGLE VOICE MODE</button>
+                <button class="jarvis-btn" id="voiceBtn" onclick="toggleVoiceMode()">🎤 TOGGLE VOICE MODE</button>
             </div>
         </div>
 
-        <!-- Right: HUD Terminal Panel -->
         <div class="hud-chat-panel">
             <div class="chat-header">
                 🖥️ COMMAND TERMINAL & THREAT MONITOR
             </div>
             <div class="chat-messages" id="messages">
-                <div class="msg jarvis">🤖 JARVIS Core Online. System posture nominal. Clap your hands or type a query below.</div>
+                <div class="msg jarvis">🤖 JARVIS Core Online. Google Gemini AI Engine configured. Type a query below or activate voice mode.</div>
             </div>
             <div class="input-bar">
                 <input type="text" id="userInput" placeholder="Type a command or ask LALA..." onkeypress="handleKey(event)">
@@ -316,99 +309,82 @@ JARVIS_HUD_HTML = """<!DOCTYPE html>
 
     <script>
         let isVoiceActive = false;
+        let isSpeaking = false;
         let recognition = null;
         let audioContext = null;
         let analyser = null;
         let micStream = null;
 
-        // Initialize Speech Recognition & Clap Detector
         function initVoice() {
             window.SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
             if (window.SpeechRecognition) {
                 recognition = new SpeechRecognition();
-                recognition.continuous = true;
+                recognition.continuous = false;
                 recognition.interimResults = false;
                 recognition.lang = 'en-US';
 
                 recognition.onresult = function(event) {
+                    if (isSpeaking) return;
                     const lastResult = event.results[event.results.length - 1];
                     const transcript = lastResult[0].transcript.trim();
+                    if (!transcript) return;
+
                     console.log('Voice Input:', transcript);
-                    
-                    if (transcript.toLowerCase().includes('lala') || transcript.toLowerCase().includes('jarvis')) {
-                        document.getElementById('voiceStatus').textContent = '⚡ WAKE WORD DETECTED! LISTENING...';
-                        speakText("Yes boss, how can I assist you?");
-                    } else {
-                        document.getElementById('userInput').value = transcript;
-                        sendMessage();
-                    }
+                    document.getElementById('userInput').value = transcript;
+                    sendMessage();
                 };
 
                 recognition.onend = function() {
-                    if (isVoiceActive) recognition.start();
+                    if (isVoiceActive && !isSpeaking) {
+                        setTimeout(() => { try { recognition.start(); } catch(e){} }, 500);
+                    }
                 };
-            }
-        }
-
-        // Web Audio API Clap Sound Detection
-        async function startClapDetection() {
-            try {
-                micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-                audioContext = new (window.AudioContext || window.webkitAudioContext)();
-                analyser = audioContext.createAnalyser();
-                const source = audioContext.createMediaStreamSource(micStream);
-                source.connect(analyser);
-                analyser.fftSize = 256;
-
-                const bufferLength = analyser.frequencyBinCount;
-                const dataArray = new Uint8Array(bufferLength);
-                let lastClapTime = 0;
-
-                function detectClap() {
-                    analyser.getByteFrequencyData(dataArray);
-                    let maxVolume = 0;
-                    for (let i = 0; i < bufferLength; i++) {
-                        if (dataArray[i] > maxVolume) maxVolume = dataArray[i];
-                    }
-
-                    const now = Date.now();
-                    if (maxVolume > 220 && (now - lastClapTime > 800)) {
-                        lastClapTime = now;
-                        console.log('👏 Clap Detected!');
-                        document.getElementById('voiceStatus').textContent = '👏 CLAP DETECTED! JARVIS WOKEN UP!';
-                        speakText("Greetings boss! LALA JARVIS active.");
-                        document.getElementById('arcReactor').style.borderColor = '#FFD700';
-                        setTimeout(() => { document.getElementById('arcReactor').style.borderColor = 'rgba(0, 240, 255, 0.4)'; }, 2000);
-                    }
-
-                    requestAnimationFrame(detectClap);
-                }
-
-                detectClap();
-            } catch (err) {
-                console.warn('Microphone access for clap detection not granted.', err);
             }
         }
 
         function toggleVoiceMode() {
             isVoiceActive = !isVoiceActive;
             const status = document.getElementById('voiceStatus');
+            const btn = document.getElementById('voiceBtn');
+
             if (isVoiceActive) {
-                status.textContent = '🎙️ JARVIS LISTENING... CLAP OR SPEAK NOW';
-                if (recognition) recognition.start();
-                startClapDetection();
-                speakText("JARVIS voice module engaged.");
+                status.textContent = '🎙️ LISTENING FOR YOUR VOICE...';
+                btn.style.borderColor = '#FFD700';
+                btn.style.color = '#FFD700';
+                if (recognition) { try { recognition.start(); } catch(e){} }
+                speakText("Voice mode active.");
             } else {
-                status.textContent = '👏 CLAP HANDS OR SAY "LALA" TO WAKE UP';
-                if (recognition) recognition.stop();
+                status.textContent = '⚡ PRESS TOGGLE VOICE MODE TO ACTIVATE MIC';
+                btn.style.borderColor = '#00F0FF';
+                btn.style.color = '#00F0FF';
+                if (recognition) { try { recognition.stop(); } catch(e){} }
             }
         }
 
         function speakText(text) {
             if ('speechSynthesis' in window) {
+                isSpeaking = true;
+                if (recognition) { try { recognition.stop(); } catch(e){} }
+                window.speechSynthesis.cancel();
+
                 const utterance = new SpeechSynthesisUtterance(text);
                 utterance.pitch = 1.0;
                 utterance.rate = 1.0;
+
+                utterance.onend = function() {
+                    isSpeaking = false;
+                    if (isVoiceActive && recognition) {
+                        setTimeout(() => { try { recognition.start(); } catch(e){} }, 500);
+                    }
+                };
+
+                utterance.onerror = function() {
+                    isSpeaking = false;
+                    if (isVoiceActive && recognition) {
+                        setTimeout(() => { try { recognition.start(); } catch(e){} }, 500);
+                    }
+                };
+
                 window.speechSynthesis.speak(utterance);
             }
         }
@@ -430,7 +406,7 @@ JARVIS_HUD_HTML = """<!DOCTYPE html>
 
             const jDiv = document.createElement('div');
             jDiv.className = 'msg jarvis';
-            jDiv.textContent = '⚡ JARVIS Processing...';
+            jDiv.textContent = '⚡ Gemini AI Processing...';
             msgs.appendChild(jDiv);
             msgs.scrollTop = msgs.scrollHeight;
 
@@ -443,7 +419,7 @@ JARVIS_HUD_HTML = """<!DOCTYPE html>
                 const data = await res.json();
                 const outText = data.response || data.detail || 'Command acknowledged.';
                 jDiv.textContent = outText;
-                speakText(outText);
+                if (isVoiceActive) speakText(outText);
             } catch (err) {
                 jDiv.textContent = '❌ Transmission Error with LALA Backend.';
             }
