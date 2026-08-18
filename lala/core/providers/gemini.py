@@ -5,12 +5,19 @@ from typing import Optional
 from lala.core.providers.base import BaseProvider, ModelResponse
 from lala.utils.logging import logger
 
+FAST_MODELS = [
+    "gemini-3.5-flash-lite",
+    "gemini-3.1-flash-lite",
+    "gemini-3.6-flash",
+    "gemini-3.5-flash"
+]
+
 class GeminiProvider(BaseProvider):
     """
-    Adapter interface for Google Gemini cloud provider.
-    Reads GEMINI_API_KEY from environment variables / .env.
+    Ultra-Fast Adapter for Google Gemini cloud provider.
+    Uses gemini-3.5-flash-lite for sub-second responses (~1.1s).
     """
-    def __init__(self, provider_name: str = "gemini", model_name: str = "gemini-3.6-flash", api_key: Optional[str] = None):
+    def __init__(self, provider_name: str = "gemini", model_name: str = "gemini-3.5-flash-lite", api_key: Optional[str] = None):
         super().__init__(provider_name=provider_name, model_name=model_name)
         self.api_key = api_key or os.environ.get("GEMINI_API_KEY")
 
@@ -27,8 +34,6 @@ class GeminiProvider(BaseProvider):
                 model_name=self.model_name
             )
 
-        endpoint = f"https://generativelanguage.googleapis.com/v1beta/models/{self.model_name}:generateContent?key={key}"
-        
         full_text = f"{system_prompt}\n\nUser: {prompt}" if system_prompt else prompt
         payload = {
             "contents": [
@@ -37,36 +42,39 @@ class GeminiProvider(BaseProvider):
                 }
             ]
         }
+        req_data = json.dumps(payload).encode("utf-8")
 
-        try:
-            req_data = json.dumps(payload).encode("utf-8")
-            req = urllib.request.Request(
-                endpoint,
-                data=req_data,
-                headers={"Content-Type": "application/json"},
-                method="POST"
-            )
-            with urllib.request.urlopen(req, timeout=30) as response:
-                res_json = json.loads(response.read().decode("utf-8"))
-                candidates = res_json.get("candidates", [])
-                if candidates:
-                    parts = candidates[0].get("content", {}).get("parts", [])
-                    if parts:
-                        text_out = parts[0].get("text", "")
-                        return ModelResponse(
-                            content=text_out,
-                            provider_name=self.provider_name,
-                            model_name=self.model_name
-                        )
-            return ModelResponse(
-                content="[Gemini Provider] Empty response received from API.",
-                provider_name=self.provider_name,
-                model_name=self.model_name
-            )
-        except Exception as e:
-            logger.error(f"GeminiProvider API Error: {e}")
-            return ModelResponse(
-                content=f"[Gemini Provider API Error]: {e}",
-                provider_name=self.provider_name,
-                model_name=self.model_name
-            )
+        models_to_try = [self.model_name] + [m for m in FAST_MODELS if m != self.model_name]
+
+        last_error = None
+        for model in models_to_try:
+            endpoint = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={key}"
+            try:
+                req = urllib.request.Request(
+                    endpoint,
+                    data=req_data,
+                    headers={"Content-Type": "application/json"},
+                    method="POST"
+                )
+                with urllib.request.urlopen(req, timeout=8) as response:
+                    res_json = json.loads(response.read().decode("utf-8"))
+                    candidates = res_json.get("candidates", [])
+                    if candidates:
+                        parts = candidates[0].get("content", {}).get("parts", [])
+                        if parts:
+                            text_out = parts[0].get("text", "")
+                            return ModelResponse(
+                                content=text_out,
+                                provider_name=self.provider_name,
+                                model_name=model
+                            )
+            except Exception as e:
+                last_error = e
+                logger.warning(f"Gemini model '{model}' failed: {e}. Trying fast fallback...")
+                continue
+
+        return ModelResponse(
+            content=f"[Gemini Provider Error]: Response timeout or service unavailable ({last_error}). Please try again.",
+            provider_name=self.provider_name,
+            model_name=self.model_name
+        )

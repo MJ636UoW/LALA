@@ -56,30 +56,13 @@ class Orchestrator:
         self.state.language_context.primary_language = language_code
 
     def process_user_input(self, user_input: str) -> str:
-        # Record user message in session state
         self.state.add_message("user", user_input, language=self.state.language_context.primary_language)
         
-        # 1. Retrieve workspace context & persistent memories & local RAG evidence
-        target_dir = "D:\\LALA" if os.path.exists("D:\\LALA") else os.path.realpath(os.getcwd())
-        ws_ctx = self.workspace_scanner.scan(target_dir)
-        ws_prompt_block = format_workspace_prompt_context(ws_ctx)
-
-        retrieved_memories = self.memory.search_memory(user_input, limit=3)
-        memory_str = "\n".join([f"- {m.content}" for m in retrieved_memories]) if retrieved_memories else "None"
-
-        # 2. Build system prompt & inject RAG context
+        # Fast system prompt assembly
         base_system_prompt = self.personality.get_system_prompt(self.state.language_context)
-        system_prompt_with_context = (
-            f"{base_system_prompt}\n\n"
-            f"{ws_prompt_block}\n\n"
-            f"[RELEVANT PERSISTENT MEMORY]\n{memory_str}\n\n"
-            f"[AVAILABLE TOOLS]: {', '.join(self.tools.list_tools())}\n"
-            f"If you need a tool, output a JSON tool call format: ```json {{\"tool\": \"tool_name\", \"arguments\": {{...}}, \"reason\": \"...\"}} ```"
-        )
-        
-        system_prompt = self.rag_manager.build_prompt_context(system_prompt_with_context, user_input, top_k=8)
+        system_prompt = self.rag_manager.build_prompt_context(base_system_prompt, user_input, top_k=3)
 
-        # 3. Agent Execution Loop
+        # Agent Execution Loop
         current_prompt = user_input
         iterations = 0
         final_response = ""
@@ -98,10 +81,9 @@ class Orchestrator:
             tool_res = self.executor.execute_request(tool_req)
 
             if tool_res.success:
-                current_prompt = f"Tool '{tool_req.tool}' executed successfully. Output: {tool_res.output}\nNow provide the answer to Mandar."
+                current_prompt = f"Tool '{tool_req.tool}' output: {tool_res.output}\nAnswer Mandar."
             else:
-                current_prompt = f"Tool '{tool_req.tool}' failed or required permission. Error: {tool_res.error}\nExplain this to Mandar."
+                current_prompt = f"Tool '{tool_req.tool}' error: {tool_res.error}\nExplain this to Mandar."
 
-        # Record assistant output in session state
         self.state.add_message("assistant", final_response, language=self.state.language_context.primary_language)
         return final_response

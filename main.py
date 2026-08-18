@@ -35,12 +35,32 @@ JARVIS_HUD_HTML = """<!DOCTYPE html>
     <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;800;900&family=Fira+Code:wght@400;600&family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
-        body {
+        
+        /* Custom Cyan HUD Scrollbars */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: rgba(5, 11, 20, 0.9);
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: rgba(0, 240, 255, 0.4);
+            border-radius: 4px;
+            border: 1px solid #00F0FF;
+            box-shadow: 0 0 10px #00F0FF;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #00F0FF;
+        }
+
+        html, body {
             background: #050B14;
             color: #00F0FF;
             font-family: 'Orbitron', 'Inter', sans-serif;
-            height: 100vh;
-            overflow: hidden;
+            min-height: 100vh;
+            overflow-y: auto;
             display: flex;
             flex-direction: column;
             background-image: 
@@ -50,7 +70,7 @@ JARVIS_HUD_HTML = """<!DOCTYPE html>
         }
 
         header {
-            background: rgba(10, 20, 38, 0.8);
+            background: rgba(10, 20, 38, 0.85);
             border-bottom: 2px solid rgba(0, 240, 255, 0.3);
             padding: 1rem 2rem;
             display: flex;
@@ -58,6 +78,9 @@ JARVIS_HUD_HTML = """<!DOCTYPE html>
             align-items: center;
             box-shadow: 0 0 20px rgba(0, 240, 255, 0.2);
             backdrop-filter: blur(10px);
+            position: sticky;
+            top: 0;
+            z-index: 100;
         }
         .hud-logo {
             font-size: 1.4rem;
@@ -107,6 +130,7 @@ JARVIS_HUD_HTML = """<!DOCTYPE html>
             max-width: 1400px;
             width: 100%;
             margin: 0 auto;
+            min-height: calc(100vh - 80px);
         }
 
         .jarvis-core-panel {
@@ -121,6 +145,7 @@ JARVIS_HUD_HTML = """<!DOCTYPE html>
             padding: 2rem;
             position: relative;
             box-shadow: inset 0 0 30px rgba(0, 240, 255, 0.1);
+            min-height: 450px;
         }
 
         .arc-reactor {
@@ -199,6 +224,8 @@ JARVIS_HUD_HTML = """<!DOCTYPE html>
             flex-direction: column;
             overflow: hidden;
             box-shadow: 0 0 30px rgba(0, 0, 0, 0.8);
+            min-height: 550px;
+            max-height: calc(100vh - 120px);
         }
         .chat-header {
             background: rgba(0, 240, 255, 0.1);
@@ -217,6 +244,7 @@ JARVIS_HUD_HTML = """<!DOCTYPE html>
             gap: 1rem;
             font-family: 'Fira Code', monospace;
             font-size: 0.9rem;
+            scroll-behavior: smooth;
         }
         .msg {
             padding: 0.9rem 1.2rem;
@@ -262,6 +290,11 @@ JARVIS_HUD_HTML = """<!DOCTYPE html>
             border-color: #00F0FF;
             box-shadow: 0 0 15px rgba(0, 240, 255, 0.4);
         }
+
+        @media (max-width: 900px) {
+            main { flex-direction: column; }
+            .hud-chat-panel { max-height: 500px; }
+        }
     </style>
 </head>
 <body>
@@ -271,7 +304,7 @@ JARVIS_HUD_HTML = """<!DOCTYPE html>
         </div>
         <div class="status-badge">
             <div class="dot"></div>
-            SYSTEM ONLINE | GEMINI ACTIVE
+            SYSTEM ONLINE | GEMINI FAST ACTIVE
         </div>
         <div class="hud-links">
             <a href="/docs" target="_blank">API DOCS</a>
@@ -298,7 +331,7 @@ JARVIS_HUD_HTML = """<!DOCTYPE html>
                 🖥️ COMMAND TERMINAL & THREAT MONITOR
             </div>
             <div class="chat-messages" id="messages">
-                <div class="msg jarvis">🤖 JARVIS Core Online. Google Gemini AI Engine configured. Type a query below or activate voice mode.</div>
+                <div class="msg jarvis">🤖 JARVIS Core Online. Google Gemini Fast AI Engine configured. Type a query below or activate voice mode.</div>
             </div>
             <div class="input-bar">
                 <input type="text" id="userInput" placeholder="Type a command or ask LALA..." onkeypress="handleKey(event)">
@@ -311,9 +344,6 @@ JARVIS_HUD_HTML = """<!DOCTYPE html>
         let isVoiceActive = false;
         let isSpeaking = false;
         let recognition = null;
-        let audioContext = null;
-        let analyser = null;
-        let micStream = null;
 
         function initVoice() {
             window.SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
