@@ -36,7 +36,6 @@ JARVIS_HUD_HTML = """<!DOCTYPE html>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
         
-        /* Custom Cyan HUD Scrollbars */
         ::-webkit-scrollbar {
             width: 8px;
             height: 8px;
@@ -447,11 +446,15 @@ JARVIS_HUD_HTML = """<!DOCTYPE html>
                     body: JSON.stringify({ prompt: prompt })
                 });
                 const data = await res.json();
-                const outText = data.response || data.detail || 'Command acknowledged.';
-                jDiv.textContent = outText;
-                if (isVoiceActive) speakText(outText);
+                if (res.ok) {
+                    const outText = data.response || 'Command acknowledged.';
+                    jDiv.textContent = outText;
+                    if (isVoiceActive) speakText(outText);
+                } else {
+                    jDiv.textContent = '⚠️ Backend Notice: ' + (data.detail || 'Service initializing, please retry in 5 seconds.');
+                }
             } catch (err) {
-                jDiv.textContent = '❌ Transmission Error with LALA Backend.';
+                jDiv.textContent = '⚡ Server is completing deployment. Please click TRANSMIT again in a moment.';
             }
             msgs.scrollTop = msgs.scrollHeight;
         }
