@@ -4,6 +4,23 @@ from typing import Dict, List, Any, Optional
 import yaml
 from pydantic import BaseModel, Field
 
+def load_env_vars():
+    """Auto-load local gitignored .env file into os.environ if present."""
+    env_path = Path(__file__).resolve().parent.parent.parent / ".env"
+    if env_path.exists():
+        try:
+            with open(env_path, "r", encoding="utf-8") as f:
+                for line in f:
+                    line = line.strip()
+                    if line and not line.startswith("#") and "=" in line:
+                        k, v = line.split("=", 1)
+                        if k.strip() not in os.environ:
+                            os.environ[k.strip()] = v.strip()
+        except Exception:
+            pass
+
+load_env_vars()
+
 def sanitize_storage_path(target_path: str) -> str:
     """Fallback to user home directory if specified drive (e.g. F:\\) does not exist on host system."""
     try:

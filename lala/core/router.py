@@ -9,9 +9,8 @@ from lala.utils.logging import logger
 
 class ModelRouter:
     """
-    Model Router governing AI provider selection.
-    In Phase 2: 'local' Ollama is the strict default provider.
-    Cloud fallback is explicitly DISABLED to guarantee local privacy.
+    Model Router governing AI provider selection (Local Ollama, Google Gemini, Anthropic Claude).
+    Priority: Explicit active provider -> Available configured Cloud/Local provider.
     """
     def __init__(self, config: Optional[ModelRouterConfig] = None):
         self.config = config or ModelRouterConfig()
@@ -31,6 +30,8 @@ class ModelRouter:
             endpoint=local_endpoint,
             temperature=local_temp
         ))
+        self.register_provider("gemini", GeminiProvider())
+        self.register_provider("claude", ClaudeProvider())
         self.register_provider("mock_local", LocalProvider(provider_name="mock_local", model_name=local_model))
         self.register_provider("mock_gemini", GeminiProvider())
         self.register_provider("mock_claude", ClaudeProvider())
@@ -41,7 +42,17 @@ class ModelRouter:
 
     def get_active_provider(self) -> BaseProvider:
         provider_name = self.config.active_provider
-        return self.providers.get(provider_name, self.providers.get("local"))
+        active = self.providers.get(provider_name)
+        if active and active.is_available():
+            return active
+
+        # Fallback to any available provider in order: Gemini -> Claude -> Local
+        for p_name in ["gemini", "claude", "local"]:
+            p = self.providers.get(p_name)
+            if p and p.is_available():
+                return p
+
+        return self.providers.get("local")
 
     def route_request(self, prompt: str, system_prompt: Optional[str] = None, provider_override: Optional[str] = None) -> ModelResponse:
         target_name = provider_override or self.config.active_provider
@@ -50,17 +61,22 @@ class ModelRouter:
         if provider and provider.is_available():
             return provider.generate(prompt, system_prompt=system_prompt)
 
-        # Check cloud_fallback policy
+        # Auto-route to configured Gemini/Claude if available and local is offline
+        for p_name in ["gemini", "claude"]:
+            p = self.providers.get(p_name)
+            if p and p.is_available():
+                logger.info(f"ModelRouter: Routing request to active cloud provider '{p_name}'.")
+                return p.generate(prompt, system_prompt=system_prompt)
+
         if self.config.cloud_fallback:
             logger.warning(f"Provider '{target_name}' unavailable. Attempting cloud fallback...")
             for name, p in self.providers.items():
                 if name != target_name and p.is_available():
                     return p.generate(prompt, system_prompt=system_prompt)
 
-        # Local privacy policy error message (zero cloud leak)
         err_msg = (
-            "LALA local brain is unavailable. Ollama is not running or the configured model is unavailable.\n"
-            "Cloud fallback is explicitly disabled to preserve local data privacy."
+            "LALA AI providers unavailable. Local Ollama is offline and cloud API keys are unconfigured.\n"
+            "Please configure GEMINI_API_KEY or ANTHROPIC_API_KEY in .env."
         )
         logger.error(err_msg)
         return ModelResponse(
@@ -70,16 +86,5 @@ class ModelRouter:
         )
 
     def route_stream(self, prompt: str, system_prompt: Optional[str] = None, provider_override: Optional[str] = None) -> Generator[str, None, None]:
-        target_name = provider_override or self.config.active_provider
-        provider = self.providers.get(target_name)
-
-        if provider and isinstance(provider, LocalProvider) and provider.is_available():
-            yield from provider.generate_stream(prompt, system_prompt=system_prompt)
-        elif provider and provider.is_available():
-            response = provider.generate(prompt, system_prompt=system_prompt)
-            yield response.content
-        else:
-            yield (
-                "LALA local brain is unavailable. Ollama is not running or the configured model is unavailable.\n"
-                "Cloud fallback is explicitly disabled to preserve local data privacy."
-            )
+        response = self.route_request(prompt, system_prompt=system_prompt, provider_override=provider_override)
+        yield response.content
