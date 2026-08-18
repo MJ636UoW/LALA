@@ -1,14 +1,15 @@
 import os
-from fastapi import FastAPI, HTTPException
+import uuid
+from fastapi import FastAPI, HTTPException, UploadFile, File, Form
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
-from typing import Optional
+from typing import Optional, List, Dict, Any
 from lala.core.orchestrator import Orchestrator
 
 app = FastAPI(
     title="LALA API",
     description="LALA Cybersecurity AI Operating Assistant API & JARVIS HUD",
-    version="0.2.0"
+    version="0.3.0"
 )
 
 _orchestrator_instance: Optional[Orchestrator] = None
@@ -21,9 +22,11 @@ def get_orchestrator() -> Orchestrator:
 
 class ChatRequest(BaseModel):
     prompt: str
+    session_id: Optional[str] = "default"
 
 class ChatResponse(BaseModel):
     response: str
+    session_id: str = "default"
     status: str = "success"
 
 JARVIS_HUD_HTML = """<!DOCTYPE html>
@@ -31,7 +34,7 @@ JARVIS_HUD_HTML = """<!DOCTYPE html>
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>LALA — JARVIS HUD AI Operating Assistant</title>
+    <title>LALA — JARVIS Pentester & AI Partner</title>
     <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;800;900&family=Fira+Code:wght@400;600&family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -126,12 +129,77 @@ JARVIS_HUD_HTML = """<!DOCTYPE html>
             display: flex;
             padding: 1.5rem;
             gap: 1.5rem;
-            max-width: 1400px;
+            max-width: 1600px;
             width: 100%;
             margin: 0 auto;
             min-height: calc(100vh - 80px);
         }
 
+        /* Left Sidebar: Recent Chats & File Upload Panel */
+        .sidebar-panel {
+            width: 300px;
+            background: rgba(10, 20, 38, 0.7);
+            border: 1px solid rgba(0, 240, 255, 0.3);
+            border-radius: 16px;
+            display: flex;
+            flex-direction: column;
+            padding: 1.2rem;
+            gap: 1.2rem;
+            box-shadow: 0 0 25px rgba(0, 0, 0, 0.6);
+        }
+        .new-chat-btn {
+            background: rgba(0, 240, 255, 0.2);
+            border: 2px solid #00F0FF;
+            color: #00F0FF;
+            padding: 0.8rem;
+            border-radius: 12px;
+            font-family: 'Orbitron', sans-serif;
+            font-weight: 700;
+            cursor: pointer;
+            text-align: center;
+            letter-spacing: 1px;
+            box-shadow: 0 0 15px rgba(0, 240, 255, 0.3);
+            transition: all 0.3s;
+        }
+        .new-chat-btn:hover {
+            background: #00F0FF;
+            color: #050B14;
+            box-shadow: 0 0 25px #00F0FF;
+        }
+
+        .recent-title {
+            font-size: 0.85rem;
+            letter-spacing: 2px;
+            color: #7DD3FC;
+            font-weight: 700;
+        }
+        .recent-chats-list {
+            flex: 1;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 0.6rem;
+        }
+        .chat-item {
+            background: rgba(15, 23, 42, 0.8);
+            border: 1px solid rgba(0, 240, 255, 0.2);
+            padding: 0.75rem 1rem;
+            border-radius: 8px;
+            font-size: 0.85rem;
+            cursor: pointer;
+            transition: all 0.2s;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            color: #94A3B8;
+        }
+        .chat-item:hover, .chat-item.active {
+            border-color: #00F0FF;
+            color: #00F0FF;
+            background: rgba(0, 240, 255, 0.1);
+        }
+
+        /* Center JARVIS Arc Reactor Panel */
         .jarvis-core-panel {
             flex: 1;
             background: rgba(10, 20, 38, 0.6);
@@ -148,8 +216,8 @@ JARVIS_HUD_HTML = """<!DOCTYPE html>
         }
 
         .arc-reactor {
-            width: 260px;
-            height: 260px;
+            width: 240px;
+            height: 240px;
             border-radius: 50%;
             border: 3px solid rgba(0, 240, 255, 0.4);
             position: relative;
@@ -160,8 +228,8 @@ JARVIS_HUD_HTML = """<!DOCTYPE html>
             animation: rotateRing 20s linear infinite;
         }
         .arc-reactor-inner {
-            width: 180px;
-            height: 180px;
+            width: 160px;
+            height: 160px;
             border-radius: 50%;
             border: 2px dashed #FFD700;
             box-shadow: 0 0 30px rgba(255, 215, 0, 0.6);
@@ -171,8 +239,8 @@ JARVIS_HUD_HTML = """<!DOCTYPE html>
             animation: rotateReverse 12s linear infinite;
         }
         .arc-core {
-            width: 100px;
-            height: 100px;
+            width: 90px;
+            height: 90px;
             background: radial-gradient(circle, #FFFFFF 0%, #00F0FF 60%, transparent 100%);
             border-radius: 50%;
             box-shadow: 0 0 40px #00F0FF, 0 0 80px #00F0FF;
@@ -182,8 +250,8 @@ JARVIS_HUD_HTML = """<!DOCTYPE html>
         @keyframes rotateReverse { 0% { transform: rotate(360deg); } 100% { transform: rotate(0deg); } }
 
         .voice-status-text {
-            margin-top: 2rem;
-            font-size: 1.1rem;
+            margin-top: 1.5rem;
+            font-size: 1rem;
             letter-spacing: 2px;
             text-align: center;
             color: #7DD3FC;
@@ -191,7 +259,7 @@ JARVIS_HUD_HTML = """<!DOCTYPE html>
         }
 
         .voice-controls {
-            margin-top: 1.5rem;
+            margin-top: 1.2rem;
             display: flex;
             gap: 1rem;
         }
@@ -199,7 +267,7 @@ JARVIS_HUD_HTML = """<!DOCTYPE html>
             background: rgba(0, 240, 255, 0.15);
             border: 2px solid #00F0FF;
             color: #00F0FF;
-            padding: 0.8rem 1.5rem;
+            padding: 0.75rem 1.2rem;
             border-radius: 30px;
             font-family: 'Orbitron', sans-serif;
             font-weight: 700;
@@ -214,8 +282,9 @@ JARVIS_HUD_HTML = """<!DOCTYPE html>
             box-shadow: 0 0 30px #00F0FF;
         }
 
+        /* Right Panel: HUD Chat Interface */
         .hud-chat-panel {
-            flex: 1.2;
+            flex: 1.4;
             background: rgba(10, 20, 38, 0.7);
             border: 1px solid rgba(0, 240, 255, 0.3);
             border-radius: 16px;
@@ -233,7 +302,23 @@ JARVIS_HUD_HTML = """<!DOCTYPE html>
             font-size: 0.95rem;
             letter-spacing: 2px;
             font-weight: 700;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
         }
+        .reset-btn {
+            background: rgba(239, 68, 68, 0.15);
+            border: 1px solid #EF4444;
+            color: #EF4444;
+            padding: 0.3rem 0.8rem;
+            border-radius: 8px;
+            font-size: 0.75rem;
+            cursor: pointer;
+            font-family: 'Orbitron', sans-serif;
+            transition: all 0.3s;
+        }
+        .reset-btn:hover { background: #EF4444; color: #FFFFFF; }
+
         .chat-messages {
             flex: 1;
             padding: 1.5rem;
@@ -273,7 +358,8 @@ JARVIS_HUD_HTML = """<!DOCTYPE html>
             padding: 1rem;
             background: rgba(5, 11, 20, 0.9);
             display: flex;
-            gap: 0.75rem;
+            gap: 0.6rem;
+            align-items: center;
         }
         input[type="text"] {
             flex: 1;
@@ -289,9 +375,21 @@ JARVIS_HUD_HTML = """<!DOCTYPE html>
             border-color: #00F0FF;
             box-shadow: 0 0 15px rgba(0, 240, 255, 0.4);
         }
+        .upload-icon-btn {
+            background: rgba(0, 240, 255, 0.15);
+            border: 1px solid #00F0FF;
+            color: #00F0FF;
+            padding: 0.75rem 1rem;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 1.1rem;
+            transition: all 0.3s;
+        }
+        .upload-icon-btn:hover { background: #00F0FF; color: #050B14; }
 
-        @media (max-width: 900px) {
+        @media (max-width: 1000px) {
             main { flex-direction: column; }
+            .sidebar-panel { width: 100%; height: auto; }
             .hud-chat-panel { max-height: 500px; }
         }
     </style>
@@ -299,11 +397,11 @@ JARVIS_HUD_HTML = """<!DOCTYPE html>
 <body>
     <header>
         <div class="hud-logo">
-            ⚡ LALA — JARVIS HUD ASSISTANT
+            ⚡ LALA — PENTESTER & AI PARTNER
         </div>
         <div class="status-badge">
             <div class="dot"></div>
-            SYSTEM ONLINE | GEMINI FAST ACTIVE
+            SYSTEM ONLINE | MULTI-SESSION MEMORY ACTIVE
         </div>
         <div class="hud-links">
             <a href="/docs" target="_blank">API DOCS</a>
@@ -311,6 +409,18 @@ JARVIS_HUD_HTML = """<!DOCTYPE html>
         </div>
     </header>
     <main>
+        <!-- Left Sidebar: Recent Chats & Actions -->
+        <div class="sidebar-panel">
+            <button class="new-chat-btn" onclick="startNewChat()">+ NEW CHAT SESSION</button>
+            <div class="recent-title">RECENT CONVERSATIONS</div>
+            <div class="recent-chats-list" id="recentChats">
+                <div class="chat-item active" onclick="switchSession('default', this)">🛡️ Main Pentest Partner</div>
+                <div class="chat-item" onclick="switchSession('malware_analysis', this)">🔬 Malware Analysis</div>
+                <div class="chat-item" onclick="switchSession('reverse_engineering', this)">⚙️ CFF & PE Reverse Eng</div>
+            </div>
+        </div>
+
+        <!-- Center: JARVIS Arc Reactor Core -->
         <div class="jarvis-core-panel">
             <div class="arc-reactor" id="arcReactor">
                 <div class="arc-reactor-inner">
@@ -325,24 +435,58 @@ JARVIS_HUD_HTML = """<!DOCTYPE html>
             </div>
         </div>
 
+        <!-- Right: HUD Terminal Panel -->
         <div class="hud-chat-panel">
             <div class="chat-header">
-                🖥️ COMMAND TERMINAL & THREAT MONITOR
+                <span>🖥️ COMMAND TERMINAL & THREAT MONITOR</span>
+                <button class="reset-btn" onclick="resetTopic()">🔄 RESET TOPIC</button>
             </div>
             <div class="chat-messages" id="messages">
-                <div class="msg jarvis">🤖 JARVIS Core Online. Google Gemini Fast AI Engine configured. Type a query below or activate voice mode.</div>
+                <div class="msg jarvis">🤖 Pentester AI Partner Online. Conversation memory active. Upload documents or ask technical questions below.</div>
             </div>
             <div class="input-bar">
-                <input type="text" id="userInput" placeholder="Type a command or ask LALA..." onkeypress="handleKey(event)">
+                <input type="file" id="fileInput" style="display: none;" onchange="uploadFile()">
+                <button class="upload-icon-btn" onclick="document.getElementById('fileInput').click()" title="Upload File / Document">📎</button>
+                <input type="text" id="userInput" placeholder="Ask LALA or type 'end of topic'..." onkeypress="handleKey(event)">
                 <button class="jarvis-btn" onclick="sendMessage()">TRANSMIT</button>
             </div>
         </div>
     </main>
 
     <script>
+        let currentSessionId = 'default';
         let isVoiceActive = false;
         let isSpeaking = false;
         let recognition = null;
+
+        function startNewChat() {
+            currentSessionId = 'session_' + Date.now().toString().slice(-6);
+            const list = document.getElementById('recentChats');
+            const item = document.createElement('div');
+            item.className = 'chat-item active';
+            item.textContent = '💬 Session ' + currentSessionId.slice(-4);
+            item.onclick = function() { switchSession(currentSessionId, item); };
+            
+            document.querySelectorAll('.chat-item').forEach(el => el.classList.remove('active'));
+            list.prepend(item);
+
+            const msgs = document.getElementById('messages');
+            msgs.innerHTML = '<div class="msg jarvis">🤖 New Pentest Session Started (' + currentSessionId + '). Ready for your commands, Mandar.</div>';
+        }
+
+        function switchSession(sid, el) {
+            currentSessionId = sid;
+            document.querySelectorAll('.chat-item').forEach(item => item.classList.remove('active'));
+            el.classList.add('active');
+
+            const msgs = document.getElementById('messages');
+            msgs.innerHTML = '<div class="msg jarvis">🤖 Switched to session [' + sid + ']. Conversation history loaded.</div>';
+        }
+
+        function resetTopic() {
+            document.getElementById('userInput').value = 'end of topic';
+            sendMessage();
+        }
 
         function initVoice() {
             window.SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -418,6 +562,43 @@ JARVIS_HUD_HTML = """<!DOCTYPE html>
             }
         }
 
+        async function uploadFile() {
+            const fileInput = document.getElementById('fileInput');
+            if (!fileInput.files || fileInput.files.length === 0) return;
+
+            const file = fileInput.files[0];
+            const msgs = document.getElementById('messages');
+
+            const uDiv = document.createElement('div');
+            uDiv.className = 'msg user';
+            uDiv.textContent = '📎 Uploading & Analyzing File: ' + file.name;
+            msgs.appendChild(uDiv);
+            msgs.scrollTop = msgs.scrollHeight;
+
+            const formData = new FormData();
+            formData.append('file', file);
+            formData.append('session_id', currentSessionId);
+
+            const jDiv = document.createElement('div');
+            jDiv.className = 'msg jarvis';
+            jDiv.textContent = '🔬 LALA Analyzing Document / File...';
+            msgs.appendChild(jDiv);
+            msgs.scrollTop = msgs.scrollHeight;
+
+            try {
+                const res = await fetch('/upload', {
+                    method: 'POST',
+                    body: formData
+                });
+                const data = await res.json();
+                jDiv.textContent = data.analysis || ('Document ' + file.name + ' uploaded and indexed successfully.');
+                if (isVoiceActive) speakText(data.analysis || 'File analysis complete.');
+            } catch (err) {
+                jDiv.textContent = '❌ Error uploading file to LALA backend.';
+            }
+            msgs.scrollTop = msgs.scrollHeight;
+        }
+
         async function sendMessage() {
             const input = document.getElementById('userInput');
             const prompt = input.value.trim();
@@ -435,7 +616,7 @@ JARVIS_HUD_HTML = """<!DOCTYPE html>
 
             const jDiv = document.createElement('div');
             jDiv.className = 'msg jarvis';
-            jDiv.textContent = '⚡ Gemini AI Processing...';
+            jDiv.textContent = '⚡ LALA AI Processing...';
             msgs.appendChild(jDiv);
             msgs.scrollTop = msgs.scrollHeight;
 
@@ -443,7 +624,7 @@ JARVIS_HUD_HTML = """<!DOCTYPE html>
                 const res = await fetch('/chat', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ prompt: prompt })
+                    body: JSON.stringify({ prompt: prompt, session_id: currentSessionId })
                 });
                 const data = await res.json();
                 if (res.ok) {
@@ -451,7 +632,7 @@ JARVIS_HUD_HTML = """<!DOCTYPE html>
                     jDiv.textContent = outText;
                     if (isVoiceActive) speakText(outText);
                 } else {
-                    jDiv.textContent = '⚠️ Backend Notice: ' + (data.detail || 'Service initializing, please retry in 5 seconds.');
+                    jDiv.textContent = '⚠️ Backend Notice: ' + (data.detail || 'Service initializing, please retry.');
                 }
             } catch (err) {
                 jDiv.textContent = '⚡ Server is completing deployment. Please click TRANSMIT again in a moment.';
@@ -478,7 +659,7 @@ def api_status():
     return {
         "status": "online",
         "system": "LALA JARVIS Cybersecurity Assistant",
-        "version": "0.2.0"
+        "version": "0.3.0"
     }
 
 @app.get("/health")
@@ -489,7 +670,33 @@ def health_check():
 def chat_endpoint(req: ChatRequest):
     try:
         orch = get_orchestrator()
-        resp = orch.process_user_input(req.prompt)
-        return ChatResponse(response=resp)
+        resp = orch.process_user_input(req.prompt, session_id=req.session_id or "default")
+        return ChatResponse(response=resp, session_id=req.session_id or "default")
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Orchestrator error: {str(e)}")
+
+@app.post("/upload")
+async def upload_file_endpoint(file: UploadFile = File(...), session_id: str = Form("default")):
+    try:
+        orch = get_orchestrator()
+        content_bytes = await file.read()
+        filename = file.filename or "uploaded_file"
+        
+        # Read text or summarize content
+        text_content = ""
+        try:
+            text_content = content_bytes.decode("utf-8", errors="replace")[:10000]
+        except Exception:
+            text_content = f"[Binary / Media File: {filename}, size: {len(content_bytes)} bytes]"
+
+        prompt = f"Analyze this uploaded document/file '{filename}':\n\n{text_content}\n\nProvide a technical pentester summary and key security observations for Mandar."
+        analysis_res = orch.process_user_input(prompt, session_id=session_id)
+
+        return {
+            "filename": filename,
+            "analysis": analysis_res,
+            "session_id": session_id,
+            "status": "success"
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"File upload processing failed: {str(e)}")

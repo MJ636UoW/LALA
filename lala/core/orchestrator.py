@@ -1,5 +1,5 @@
 import os
-from typing import Optional, List
+from typing import Optional, List, Dict, Any
 from lala.core.config import LalaConfig, load_config
 from lala.core.state import SessionState, LanguageCode
 from lala.core.router import ModelRouter
@@ -22,11 +22,15 @@ from lala.utils.logging import logger
 
 MAX_TOOL_ITERATIONS = 5
 
+RESET_TOPIC_PHRASES = [
+    "end of topic", "end of that topic", "new topic", 
+    "reset chat", "reset topic", "start new topic", "clear chat"
+]
+
 class Orchestrator:
     """
-    Central pipeline orchestrator for LALA Phase 10.
-    Coordinates User Goal -> Memory -> Workspace -> Offline Local RAG -> Autonomous Security Automation -> Local LLM -> Security Engine -> Response.
-    Enforces 100% Local Inference, Safe Autonomous Automation Policy, and Privacy.
+    Central pipeline orchestrator for LALA Phase 10 & Multi-Turn Pentester Partner.
+    Coordinates User Goal -> Multi-Session Chat Memory -> RAG Context -> Security Engine -> Model Generation.
     """
     def __init__(self, config: Optional[LalaConfig] = None):
         self.config = config or load_config()
@@ -47,6 +51,9 @@ class Orchestrator:
         self.workspace_scanner = WorkspaceScanner(root_path=default_root)
         self.task_planner = TaskPlanner()
         self.agent_executor = AgentExecutor(executor=self.executor)
+        
+        # Session Store for Multi-Turn Chat History
+        self.sessions: Dict[str, List[Dict[str, str]]] = {}
         self.state = SessionState(
             user_name=self.config.system.user_name,
             agent_name=self.config.system.name
@@ -55,15 +62,44 @@ class Orchestrator:
     def set_language(self, language_code: LanguageCode):
         self.state.language_context.primary_language = language_code
 
-    def process_user_input(self, user_input: str) -> str:
-        self.state.add_message("user", user_input, language=self.state.language_context.primary_language)
-        
-        # Fast system prompt assembly
+    def reset_session(self, session_id: str = "default"):
+        self.sessions[session_id] = []
+
+    def get_history(self, session_id: str = "default") -> List[Dict[str, str]]:
+        return self.sessions.get(session_id, [])
+
+    def process_user_input(self, user_input: str, session_id: str = "default") -> str:
+        clean_input = user_input.strip()
+        lower_input = clean_input.lower()
+
+        # Check Topic Reset Phrases
+        if any(phrase in lower_input for phrase in RESET_TOPIC_PHRASES):
+            self.reset_session(session_id)
+            return "Topic reset acknowledged. Starting a fresh conversation. What security task shall we work on next, Mandar?"
+
+        # Initialize session history if not present
+        if session_id not in self.sessions:
+            self.sessions[session_id] = []
+
+        history = self.sessions[session_id]
+
+        # Format conversation history block (last 8 messages for speed & context)
+        history_block = ""
+        if history:
+            history_lines = []
+            for item in history[-8:]:
+                role = "Mandar" if item["role"] == "user" else "LALA"
+                history_lines.append(f"{role}: {item['content']}")
+            history_block = f"[CONVERSATION HISTORY - CONTINUE CONTEXT DIRECTLY]\n" + "\n".join(history_lines) + "\n\n"
+
+        # Build system prompt with history context
         base_system_prompt = self.personality.get_system_prompt(self.state.language_context)
-        system_prompt = self.rag_manager.build_prompt_context(base_system_prompt, user_input, top_k=3)
+        system_prompt_with_history = f"{base_system_prompt}\n\n{history_block}" if history_block else base_system_prompt
+        
+        system_prompt = self.rag_manager.build_prompt_context(system_prompt_with_history, clean_input, top_k=3)
 
         # Agent Execution Loop
-        current_prompt = user_input
+        current_prompt = clean_input
         iterations = 0
         final_response = ""
 
@@ -85,5 +121,8 @@ class Orchestrator:
             else:
                 current_prompt = f"Tool '{tool_req.tool}' error: {tool_res.error}\nExplain this to Mandar."
 
-        self.state.add_message("assistant", final_response, language=self.state.language_context.primary_language)
+        # Update Session History
+        self.sessions[session_id].append({"role": "user", "content": clean_input})
+        self.sessions[session_id].append({"role": "assistant", "content": final_response})
+
         return final_response
