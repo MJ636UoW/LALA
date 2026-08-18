@@ -7,8 +7,8 @@ from lala.core.orchestrator import Orchestrator
 
 app = FastAPI(
     title="LALA API",
-    description="LALA Cybersecurity AI Operating Assistant API",
-    version="0.1.0"
+    description="LALA Cybersecurity AI Operating Assistant API & JARVIS HUD",
+    version="0.2.0"
 )
 
 _orchestrator_instance: Optional[Orchestrator] = None
@@ -26,65 +26,393 @@ class ChatResponse(BaseModel):
     response: str
     status: str = "success"
 
-HTML_TEMPLATE = """<!DOCTYPE html>
+JARVIS_HUD_HTML = """<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>LALA — Cybersecurity Intelligence Platform</title>
-    <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;600&family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+    <title>LALA — JARVIS HUD AI Operating Assistant</title>
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;800;900&family=Fira+Code:wght@400;600&family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
-        body { background-color: #0B0F19; color: #E2E8F0; font-family: 'Inter', sans-serif; height: 100vh; display: flex; flex-direction: column; }
-        header { background: #111827; border-bottom: 1px solid #1E293B; padding: 1rem 2rem; display: flex; justify-content: space-between; align-items: center; }
-        .logo { font-family: 'Fira Code', monospace; font-size: 1.25rem; font-weight: 700; color: #38BDF8; display: flex; align-items: center; gap: 0.5rem; }
-        .status-dot { width: 10px; height: 10px; background-color: #22C55E; border-radius: 50%; box-shadow: 0 0 10px #22C55E; }
-        .nav-links { display: flex; gap: 1rem; }
-        .nav-links a { color: #94A3B8; text-decoration: none; font-size: 0.9rem; font-weight: 600; transition: color 0.2s; }
-        .nav-links a:hover { color: #38BDF8; }
-        main { flex: 1; display: flex; flex-direction: column; max-width: 900px; width: 100%; margin: 0 auto; padding: 2rem 1rem; gap: 1.5rem; }
-        .hero { background: linear-gradient(135deg, #1E293B 0%, #0F172A 100%); border: 1px solid #334155; border-radius: 12px; padding: 1.5rem; }
-        .hero h1 { font-size: 1.5rem; color: #F8FAFC; margin-bottom: 0.5rem; }
-        .hero p { color: #94A3B8; font-size: 0.95rem; }
-        .chat-box { flex: 1; background: #111827; border: 1px solid #1E293B; border-radius: 12px; display: flex; flex-direction: column; overflow: hidden; min-height: 400px; }
-        .messages { flex: 1; padding: 1.5rem; overflow-y: auto; display: flex; flex-direction: column; gap: 1rem; font-family: 'Fira Code', monospace; font-size: 0.9rem; }
-        .msg { padding: 0.75rem 1rem; border-radius: 8px; max-width: 85%; line-height: 1.5; white-space: pre-wrap; }
-        .msg.user { background: #0284C7; color: #FFFFFF; align-self: flex-end; }
-        .msg.lala { background: #1E293B; color: #38BDF8; border: 1px solid #334155; align-self: flex-start; }
-        .input-area { border-top: 1px solid #1E293B; padding: 1rem; background: #0B0F19; display: flex; gap: 0.75rem; }
-        input[type="text"] { flex: 1; background: #1E293B; border: 1px solid #334155; border-radius: 8px; padding: 0.75rem 1rem; color: #F8FAFC; font-family: 'Inter', sans-serif; font-size: 0.95rem; outline: none; }
-        input[type="text"]:focus { border-color: #38BDF8; box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.2); }
-        button { background: #0284C7; color: #FFFFFF; border: none; border-radius: 8px; padding: 0.75rem 1.5rem; font-weight: 600; cursor: pointer; transition: background 0.2s; }
-        button:hover { background: #0369A1; }
+        body {
+            background: #050B14;
+            color: #00F0FF;
+            font-family: 'Orbitron', 'Inter', sans-serif;
+            height: 100vh;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            background-image: 
+                radial-gradient(circle at 50% 50%, rgba(0, 240, 255, 0.08) 0%, transparent 60%),
+                linear-gradient(rgba(5, 11, 20, 0.95), rgba(5, 11, 20, 0.95)),
+                repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0, 240, 255, 0.03) 3px, transparent 4px);
+        }
+
+        /* Top HUD Navigation Header */
+        header {
+            background: rgba(10, 20, 38, 0.8);
+            border-bottom: 2px solid rgba(0, 240, 255, 0.3);
+            padding: 1rem 2rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: 0 0 20px rgba(0, 240, 255, 0.2);
+            backdrop-filter: blur(10px);
+        }
+        .hud-logo {
+            font-size: 1.4rem;
+            font-weight: 900;
+            letter-spacing: 3px;
+            color: #00F0FF;
+            text-shadow: 0 0 15px #00F0FF;
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+        .status-badge {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-size: 0.85rem;
+            background: rgba(0, 240, 255, 0.1);
+            border: 1px solid #00F0FF;
+            padding: 0.3rem 0.8rem;
+            border-radius: 20px;
+            box-shadow: 0 0 10px rgba(0, 240, 255, 0.4);
+        }
+        .dot { width: 10px; height: 10px; background: #00F0FF; border-radius: 50%; box-shadow: 0 0 10px #00F0FF; animation: pulse 1.5s infinite; }
+
+        @keyframes pulse {
+            0% { transform: scale(1); opacity: 1; }
+            50% { transform: scale(1.3); opacity: 0.5; }
+            100% { transform: scale(1); opacity: 1; }
+        }
+
+        .hud-links a {
+            color: #7DD3FC;
+            text-decoration: none;
+            font-size: 0.85rem;
+            margin-left: 1.5rem;
+            font-weight: 600;
+            letter-spacing: 1px;
+            transition: all 0.3s;
+        }
+        .hud-links a:hover { color: #00F0FF; text-shadow: 0 0 10px #00F0FF; }
+
+        /* Main JARVIS Container */
+        main {
+            flex: 1;
+            display: flex;
+            padding: 1.5rem;
+            gap: 1.5rem;
+            max-width: 1400px;
+            width: 100%;
+            margin: 0 auto;
+        }
+
+        /* Left Side Panel: JARVIS Arc Reactor & Audio Visualizer */
+        .jarvis-core-panel {
+            flex: 1;
+            background: rgba(10, 20, 38, 0.6);
+            border: 1px solid rgba(0, 240, 255, 0.3);
+            border-radius: 16px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 2rem;
+            position: relative;
+            box-shadow: inset 0 0 30px rgba(0, 240, 255, 0.1);
+        }
+
+        /* Holographic Arc Reactor Ring */
+        .arc-reactor {
+            width: 260px;
+            height: 260px;
+            border-radius: 50%;
+            border: 3px solid rgba(0, 240, 255, 0.4);
+            position: relative;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 0 50px rgba(0, 240, 255, 0.4), inset 0 0 50px rgba(0, 240, 255, 0.4);
+            animation: rotateRing 20s linear infinite;
+        }
+        .arc-reactor-inner {
+            width: 180px;
+            height: 180px;
+            border-radius: 50%;
+            border: 2px dashed #FFD700;
+            box-shadow: 0 0 30px rgba(255, 215, 0, 0.6);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            animation: rotateReverse 12s linear infinite;
+        }
+        .arc-core {
+            width: 100px;
+            height: 100px;
+            background: radial-gradient(circle, #FFFFFF 0%, #00F0FF 60%, transparent 100%);
+            border-radius: 50%;
+            box-shadow: 0 0 40px #00F0FF, 0 0 80px #00F0FF;
+        }
+
+        @keyframes rotateRing { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        @keyframes rotateReverse { 0% { transform: rotate(360deg); } 100% { transform: rotate(0deg); } }
+
+        .voice-status-text {
+            margin-top: 2rem;
+            font-size: 1.1rem;
+            letter-spacing: 2px;
+            text-align: center;
+            color: #7DD3FC;
+            text-shadow: 0 0 10px rgba(0, 240, 255, 0.6);
+        }
+
+        .voice-controls {
+            margin-top: 1.5rem;
+            display: flex;
+            gap: 1rem;
+        }
+        .jarvis-btn {
+            background: rgba(0, 240, 255, 0.15);
+            border: 2px solid #00F0FF;
+            color: #00F0FF;
+            padding: 0.8rem 1.5rem;
+            border-radius: 30px;
+            font-family: 'Orbitron', sans-serif;
+            font-weight: 700;
+            cursor: pointer;
+            letter-spacing: 1px;
+            box-shadow: 0 0 15px rgba(0, 240, 255, 0.3);
+            transition: all 0.3s;
+        }
+        .jarvis-btn:hover {
+            background: #00F0FF;
+            color: #050B14;
+            box-shadow: 0 0 30px #00F0FF;
+        }
+
+        /* Right Panel: HUD Chat Interface */
+        .hud-chat-panel {
+            flex: 1.2;
+            background: rgba(10, 20, 38, 0.7);
+            border: 1px solid rgba(0, 240, 255, 0.3);
+            border-radius: 16px;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            box-shadow: 0 0 30px rgba(0, 0, 0, 0.8);
+        }
+        .chat-header {
+            background: rgba(0, 240, 255, 0.1);
+            border-bottom: 1px solid rgba(0, 240, 255, 0.3);
+            padding: 1rem 1.5rem;
+            font-size: 0.95rem;
+            letter-spacing: 2px;
+            font-weight: 700;
+        }
+        .chat-messages {
+            flex: 1;
+            padding: 1.5rem;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+            font-family: 'Fira Code', monospace;
+            font-size: 0.9rem;
+        }
+        .msg {
+            padding: 0.9rem 1.2rem;
+            border-radius: 10px;
+            line-height: 1.6;
+            max-width: 88%;
+            word-wrap: break-word;
+            white-space: pre-wrap;
+        }
+        .msg.user {
+            background: rgba(0, 240, 255, 0.15);
+            border: 1px solid #00F0FF;
+            color: #E0F2FE;
+            align-self: flex-end;
+            box-shadow: 0 0 10px rgba(0, 240, 255, 0.2);
+        }
+        .msg.jarvis {
+            background: rgba(15, 23, 42, 0.9);
+            border: 1px solid rgba(255, 215, 0, 0.5);
+            color: #FFD700;
+            align-self: flex-start;
+            box-shadow: 0 0 15px rgba(255, 215, 0, 0.2);
+        }
+
+        .input-bar {
+            border-top: 1px solid rgba(0, 240, 255, 0.3);
+            padding: 1rem;
+            background: rgba(5, 11, 20, 0.9);
+            display: flex;
+            gap: 0.75rem;
+        }
+        input[type="text"] {
+            flex: 1;
+            background: rgba(15, 23, 42, 0.8);
+            border: 1px solid rgba(0, 240, 255, 0.4);
+            border-radius: 8px;
+            padding: 0.8rem 1.2rem;
+            color: #00F0FF;
+            font-family: 'Fira Code', monospace;
+            outline: none;
+        }
+        input[type="text"]:focus {
+            border-color: #00F0FF;
+            box-shadow: 0 0 15px rgba(0, 240, 255, 0.4);
+        }
     </style>
 </head>
 <body>
     <header>
-        <div class="logo">
-            <div class="status-dot"></div>
-            LALA CYBERSECURITY PLATFORM
+        <div class="hud-logo">
+            ⚡ LALA — JARVIS HUD ASSISTANT
         </div>
-        <div class="nav-links">
-            <a href="/docs" target="_blank">Swagger API Docs</a>
-            <a href="/health" target="_blank">Health Check</a>
+        <div class="status-badge">
+            <div class="dot"></div>
+            SYSTEM ONLINE | CLAP & VOICE ACTIVE
+        </div>
+        <div class="hud-links">
+            <a href="/docs" target="_blank">API DOCS</a>
+            <a href="/health" target="_blank">SYSTEM HEALTH</a>
         </div>
     </header>
     <main>
-        <div class="hero">
-            <h1>🛡️ LALA Cybersecurity AI Assistant</h1>
-            <p>100% Local Autonomous Investigation & Threat Intelligence Engine</p>
-        </div>
-        <div class="chat-box">
-            <div class="messages" id="messages">
-                <div class="msg lala">🚀 LALA Online. Type a query, command, or request below.</div>
+        <!-- Left: JARVIS Arc Reactor & Audio Visualizer Panel -->
+        <div class="jarvis-core-panel">
+            <div class="arc-reactor" id="arcReactor">
+                <div class="arc-reactor-inner">
+                    <div class="arc-core"></div>
+                </div>
             </div>
-            <div class="input-area">
-                <input type="text" id="userInput" placeholder="Ask LALA or type '/automation status'..." onkeypress="handleKey(event)">
-                <button onclick="sendMessage()">Send Request</button>
+            <div class="voice-status-text" id="voiceStatus">
+                👏 CLAP HANDS OR SAY "LALA" TO WAKE UP
+            </div>
+            <div class="voice-controls">
+                <button class="jarvis-btn" onclick="toggleVoiceMode()">🎤 TOGGLE VOICE MODE</button>
+            </div>
+        </div>
+
+        <!-- Right: HUD Terminal Panel -->
+        <div class="hud-chat-panel">
+            <div class="chat-header">
+                🖥️ COMMAND TERMINAL & THREAT MONITOR
+            </div>
+            <div class="chat-messages" id="messages">
+                <div class="msg jarvis">🤖 JARVIS Core Online. System posture nominal. Clap your hands or type a query below.</div>
+            </div>
+            <div class="input-bar">
+                <input type="text" id="userInput" placeholder="Type a command or ask LALA..." onkeypress="handleKey(event)">
+                <button class="jarvis-btn" onclick="sendMessage()">TRANSMIT</button>
             </div>
         </div>
     </main>
+
     <script>
+        let isVoiceActive = false;
+        let recognition = null;
+        let audioContext = null;
+        let analyser = null;
+        let micStream = null;
+
+        // Initialize Speech Recognition & Clap Detector
+        function initVoice() {
+            window.SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+            if (window.SpeechRecognition) {
+                recognition = new SpeechRecognition();
+                recognition.continuous = true;
+                recognition.interimResults = false;
+                recognition.lang = 'en-US';
+
+                recognition.onresult = function(event) {
+                    const lastResult = event.results[event.results.length - 1];
+                    const transcript = lastResult[0].transcript.trim();
+                    console.log('Voice Input:', transcript);
+                    
+                    if (transcript.toLowerCase().includes('lala') || transcript.toLowerCase().includes('jarvis')) {
+                        document.getElementById('voiceStatus').textContent = '⚡ WAKE WORD DETECTED! LISTENING...';
+                        speakText("Yes boss, how can I assist you?");
+                    } else {
+                        document.getElementById('userInput').value = transcript;
+                        sendMessage();
+                    }
+                };
+
+                recognition.onend = function() {
+                    if (isVoiceActive) recognition.start();
+                };
+            }
+        }
+
+        // Web Audio API Clap Sound Detection
+        async function startClapDetection() {
+            try {
+                micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                analyser = audioContext.createAnalyser();
+                const source = audioContext.createMediaStreamSource(micStream);
+                source.connect(analyser);
+                analyser.fftSize = 256;
+
+                const bufferLength = analyser.frequencyBinCount;
+                const dataArray = new Uint8Array(bufferLength);
+                let lastClapTime = 0;
+
+                function detectClap() {
+                    analyser.getByteFrequencyData(dataArray);
+                    let maxVolume = 0;
+                    for (let i = 0; i < bufferLength; i++) {
+                        if (dataArray[i] > maxVolume) maxVolume = dataArray[i];
+                    }
+
+                    const now = Date.now();
+                    if (maxVolume > 220 && (now - lastClapTime > 800)) {
+                        lastClapTime = now;
+                        console.log('👏 Clap Detected!');
+                        document.getElementById('voiceStatus').textContent = '👏 CLAP DETECTED! JARVIS WOKEN UP!';
+                        speakText("Greetings boss! LALA JARVIS active.");
+                        document.getElementById('arcReactor').style.borderColor = '#FFD700';
+                        setTimeout(() => { document.getElementById('arcReactor').style.borderColor = 'rgba(0, 240, 255, 0.4)'; }, 2000);
+                    }
+
+                    requestAnimationFrame(detectClap);
+                }
+
+                detectClap();
+            } catch (err) {
+                console.warn('Microphone access for clap detection not granted.', err);
+            }
+        }
+
+        function toggleVoiceMode() {
+            isVoiceActive = !isVoiceActive;
+            const status = document.getElementById('voiceStatus');
+            if (isVoiceActive) {
+                status.textContent = '🎙️ JARVIS LISTENING... CLAP OR SPEAK NOW';
+                if (recognition) recognition.start();
+                startClapDetection();
+                speakText("JARVIS voice module engaged.");
+            } else {
+                status.textContent = '👏 CLAP HANDS OR SAY "LALA" TO WAKE UP';
+                if (recognition) recognition.stop();
+            }
+        }
+
+        function speakText(text) {
+            if ('speechSynthesis' in window) {
+                const utterance = new SpeechSynthesisUtterance(text);
+                utterance.pitch = 1.0;
+                utterance.rate = 1.0;
+                window.speechSynthesis.speak(utterance);
+            }
+        }
+
         async function sendMessage() {
             const input = document.getElementById('userInput');
             const prompt = input.value.trim();
@@ -92,7 +420,6 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
             const msgs = document.getElementById('messages');
             
-            // Add user message
             const uDiv = document.createElement('div');
             uDiv.className = 'msg user';
             uDiv.textContent = prompt;
@@ -101,11 +428,10 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             input.value = '';
             msgs.scrollTop = msgs.scrollHeight;
 
-            // Loading state
-            const lDiv = document.createElement('div');
-            lDiv.className = 'msg lala';
-            lDiv.textContent = 'Thinking...';
-            msgs.appendChild(lDiv);
+            const jDiv = document.createElement('div');
+            jDiv.className = 'msg jarvis';
+            jDiv.textContent = '⚡ JARVIS Processing...';
+            msgs.appendChild(jDiv);
             msgs.scrollTop = msgs.scrollHeight;
 
             try {
@@ -115,9 +441,11 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                     body: JSON.stringify({ prompt: prompt })
                 });
                 const data = await res.json();
-                lDiv.textContent = data.response || data.detail || 'Received response.';
+                const outText = data.response || data.detail || 'Command acknowledged.';
+                jDiv.textContent = outText;
+                speakText(outText);
             } catch (err) {
-                lDiv.textContent = 'Error communicating with LALA API.';
+                jDiv.textContent = '❌ Transmission Error with LALA Backend.';
             }
             msgs.scrollTop = msgs.scrollHeight;
         }
@@ -125,6 +453,8 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         function handleKey(e) {
             if (e.key === 'Enter') sendMessage();
         }
+
+        window.onload = initVoice;
     </script>
 </body>
 </html>
@@ -132,14 +462,14 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
 @app.get("/", response_class=HTMLResponse)
 def read_root():
-    return HTML_TEMPLATE
+    return JARVIS_HUD_HTML
 
 @app.get("/api-status")
 def api_status():
     return {
         "status": "online",
-        "system": "LALA Cybersecurity Assistant API",
-        "version": "0.1.0"
+        "system": "LALA JARVIS Cybersecurity Assistant",
+        "version": "0.2.0"
     }
 
 @app.get("/health")

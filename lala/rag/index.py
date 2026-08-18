@@ -3,87 +3,74 @@ import json
 import os
 from pathlib import Path
 from typing import List, Dict, Any, Optional
-from lala.rag.models import Document, Chunk, SearchResult
+from lala.rag.models import Document, Chunk, SearchResult, QueryCategory
 from lala.core.config import sanitize_storage_path
 from lala.utils.logging import logger
 
 class LocalRAGIndex:
     """
-    Local SQLite FTS5 Index for LALA Phase 9.
-    Provides fast, deterministic local keyword and lexical search over indexed document chunks.
+    SQLite FTS5 Local Search & Retrieval Index for LALA Phase 9.
     Stored locally under F:\\LALA\\Knowledge\\indexes\\lala_rag_index.db.
     """
     def __init__(self, db_path: str = "F:\\LALA\\Knowledge\\indexes\\lala_rag_index.db"):
-        self.db_path = sanitize_storage_path(db_path)
+        self.db_path = Path(sanitize_storage_path(db_path))
         self._init_db()
 
     def _get_connection(self) -> sqlite3.Connection:
-        try:
-            os.makedirs(os.path.dirname(self.db_path), exist_ok=True)
-        except Exception:
-            pass
-        conn = sqlite3.connect(self.db_path)
+        conn = sqlite3.connect(str(self.db_path))
         conn.row_factory = sqlite3.Row
         return conn
 
     def _init_db(self):
-        with self._get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute("""
-                CREATE TABLE IF NOT EXISTS documents (
-                    document_id TEXT PRIMARY KEY,
-                    title TEXT NOT NULL,
-                    category TEXT NOT NULL,
-                    filepath TEXT NOT NULL,
-                    created_at TEXT NOT NULL,
-                    chunk_count INTEGER NOT NULL,
-                    sha256 TEXT NOT NULL
-                )
-            """)
-            cursor.execute("""
-                CREATE TABLE IF NOT EXISTS chunks (
-                    chunk_id TEXT PRIMARY KEY,
-                    document_id TEXT NOT NULL,
-                    chunk_index INTEGER NOT NULL,
-                    text TEXT NOT NULL,
-                    token_count INTEGER NOT NULL,
-                    start_char INTEGER NOT NULL,
-                    end_char INTEGER NOT NULL,
-                    FOREIGN KEY (document_id) REFERENCES documents (document_id)
-                )
-            """)
-            # Create FTS5 virtual table for keyword search
-            cursor.execute("""
-                CREATE VIRTUAL TABLE IF NOT EXISTS chunks_fts USING fts5(
-                    chunk_id UNINDEXED,
-                    document_id UNINDEXED,
-                    text
-                )
-            """)
-            conn.commit()
+        try:
+            self.db_path.parent.mkdir(parents=True, exist_ok=True)
+            with self._get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute("""
+                    CREATE TABLE IF NOT EXISTS documents (
+                        document_id TEXT PRIMARY KEY,
+                        source_path TEXT,
+                        source_type TEXT,
+                        sha256 TEXT UNIQUE,
+                        file_size INTEGER,
+                        title TEXT,
+                        content TEXT,
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    )
+                """)
+                cursor.execute("""
+                    CREATE TABLE IF NOT EXISTS chunks (
+                        chunk_id TEXT PRIMARY KEY,
+                        document_id TEXT,
+                        chunk_index INTEGER,
+                        text TEXT,
+                        token_count INTEGER,
+                        FOREIGN KEY(document_id) REFERENCES documents(document_id) ON DELETE CASCADE
+                    )
+                """)
+                cursor.execute("""
+                    CREATE VIRTUAL TABLE IF NOT EXISTS chunks_fts USING fts5(
+                        chunk_id UNINDEXED,
+                        document_id UNINDEXED,
+                        text
+                    )
+                """)
+                conn.commit()
+        except Exception as e:
+            logger.error(f"LocalRAGIndex Init Error: {e}")
 
     def add_document(self, doc: Document, chunks: List[Chunk]) -> bool:
         try:
-            category_str = doc.metadata.get("category", "GENERAL") if isinstance(doc.metadata, dict) else "GENERAL"
-            if hasattr(category_str, "value"):
-                category_str = category_str.value
-            source_path = getattr(doc, "source_path", getattr(doc, "filepath", "unknown"))
-            created_at = getattr(doc, "imported_at", getattr(doc, "created_at", ""))
-
             with self._get_connection() as conn:
                 cursor = conn.cursor()
                 cursor.execute(
-                    "INSERT OR REPLACE INTO documents VALUES (?, ?, ?, ?, ?, ?, ?)",
-                    (doc.document_id, doc.title, str(category_str), source_path, created_at, len(chunks), doc.sha256)
+                    "INSERT OR REPLACE INTO documents (document_id, source_path, source_type, sha256, file_size, title, content) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                    (doc.document_id, doc.source_path, doc.source_type, doc.sha256, doc.file_size, doc.title, doc.content)
                 )
                 for chunk in chunks:
-                    tok_cnt = getattr(chunk, "token_estimate", getattr(chunk, "token_count", len(chunk.text) // 4))
-                    start_c = chunk.metadata.get("start_char", 0) if isinstance(chunk.metadata, dict) else 0
-                    end_c = chunk.metadata.get("end_char", len(chunk.text)) if isinstance(chunk.metadata, dict) else len(chunk.text)
-
                     cursor.execute(
-                        "INSERT OR REPLACE INTO chunks VALUES (?, ?, ?, ?, ?, ?, ?)",
-                        (chunk.chunk_id, chunk.document_id, chunk.chunk_index, chunk.text, tok_cnt, start_c, end_c)
+                        "INSERT OR REPLACE INTO chunks (chunk_id, document_id, chunk_index, text, token_count) VALUES (?, ?, ?, ?, ?)",
+                        (chunk.chunk_id, chunk.document_id, chunk.chunk_index, chunk.text, chunk.token_count)
                     )
                     cursor.execute(
                         "INSERT OR REPLACE INTO chunks_fts (chunk_id, document_id, text) VALUES (?, ?, ?)",
@@ -92,51 +79,39 @@ class LocalRAGIndex:
                 conn.commit()
                 return True
         except Exception as e:
-            logger.error(f"LocalRAGIndex Add Document Error: {e}")
+            logger.error(f"LocalRAGIndex Add Error: {e}")
             return False
 
-    def add_document_and_chunks(self, doc: Document, chunks: List[Chunk]) -> bool:
-        return self.add_document(doc, chunks)
+    def search_fts(self, query: str, top_k: int = 8) -> List[SearchResult]:
+        results = []
+        if not query or not query.strip():
+            return results
 
-    def list_documents(self) -> List[Dict[str, Any]]:
-        docs = []
+        clean_query = "".join(c for c in query if c.isalnum() or c.isspace()).strip()
+        if not clean_query:
+            return results
+
         try:
             with self._get_connection() as conn:
                 cursor = conn.cursor()
-                cursor.execute("SELECT document_id, title, category, filepath, created_at, chunk_count, sha256 FROM documents")
+                cursor.execute("""
+                    SELECT fts.chunk_id, fts.document_id, fts.text, rank, d.source_path, d.title
+                    FROM chunks_fts fts
+                    JOIN documents d ON fts.document_id = d.document_id
+                    WHERE chunks_fts MATCH ?
+                    ORDER BY rank
+                    LIMIT ?
+                """, (clean_query, top_k))
                 rows = cursor.fetchall()
                 for r in rows:
-                    docs.append(dict(r))
-        except Exception as e:
-            logger.error(f"LocalRAGIndex List Documents Error: {e}")
-        return docs
-
-    def search_fts(self, query: str, top_k: int = 8) -> List[SearchResult]:
-        cleaned_query = "".join(c if c.isalnum() or c.isspace() else " " for c in query).strip()
-        if not cleaned_query:
-            return []
-
-        results = []
-        try:
-            with self._get_connection() as conn:
-                cursor = conn.cursor()
-                # Query FTS5 matching chunks
-                cursor.execute("""
-                    SELECT f.chunk_id, f.document_id, f.text, d.title, d.category, d.filepath
-                    FROM chunks_fts f
-                    JOIN documents d ON f.document_id = d.document_id
-                    WHERE chunks_fts MATCH ?
-                    LIMIT ?
-                """, (cleaned_query, top_k))
-                rows = cursor.fetchall()
-                for rank, row in enumerate(rows, start=1):
+                    score = abs(float(r["rank"])) if r["rank"] else 1.0
                     res = SearchResult(
-                        chunk_id=row["chunk_id"],
-                        document_id=row["document_id"],
-                        document_title=row["title"],
-                        text=row["text"],
-                        relevance_score=round(1.0 - (rank * 0.05), 2),
-                        metadata={"category": row["category"], "filepath": row["filepath"]}
+                        chunk_id=r["chunk_id"],
+                        document_id=r["document_id"],
+                        text=r["text"],
+                        score=score,
+                        source_path=r["source_path"],
+                        title=r["title"]
                     )
                     results.append(res)
         except Exception as e:
@@ -144,8 +119,9 @@ class LocalRAGIndex:
 
         return results
 
-    def search_keyword(self, query: str, top_k: int = 8) -> List[SearchResult]:
-        return self.search_fts(query, top_k=top_k)
+    def search_keyword(self, query: str, top_k: int = 8, limit: Optional[int] = None) -> List[SearchResult]:
+        effective_k = limit if limit is not None else top_k
+        return self.search_fts(query, top_k=effective_k)
 
     def clear(self) -> bool:
         try:
