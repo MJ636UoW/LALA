@@ -522,6 +522,41 @@ JARVIS_HUD_HTML = """<!DOCTYPE html>
             msgs.scrollTop = msgs.scrollHeight;
         }
 
+        let taskQueue = [];
+        let isProcessingQueue = false;
+
+        function cleanTextForSpeech(text) {
+            if (!text) return '';
+            let clean = text;
+            clean = clean.replace(/```[\s\S]*?```/g, 'Code block omitted.');
+            clean = clean.replace(/`([^`]+)`/g, '$1');
+            clean = clean.replace(/^#+\s+/gm, '');
+            clean = clean.replace(/\*\*([^*]+)\*\*/g, '$1');
+            clean = clean.replace(/\*([^*]+)\*/g, '$1');
+            clean = clean.replace(/__([^_]+)__/g, '$1');
+            clean = clean.replace(/_([^_]+)_/g, '$1');
+            clean = clean.replace(/^\s*[\-*+]\s+/gm, '');
+            clean = clean.replace(/^\s*\d+\.\s+/gm, '');
+            clean = clean.replace(/[#*~`>|_]/g, '');
+            return clean.trim();
+        }
+
+        function getBestVoice() {
+            if (!('speechSynthesis' in window)) return null;
+            const voices = window.speechSynthesis.getVoices();
+            const preferred = voices.find(v => 
+                v.name.includes('Google UK English Female') || 
+                v.name.includes('Google US English') ||
+                v.name.includes('Natural') || 
+                v.name.includes('Zira') || 
+                v.name.includes('Jenny') || 
+                v.name.includes('Samantha') || 
+                v.name.includes('Karen') ||
+                v.name.includes('Female')
+            );
+            return preferred || voices[0] || null;
+        }
+
         function initVoice() {
             window.SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
             if (window.SpeechRecognition) {
@@ -530,20 +565,27 @@ JARVIS_HUD_HTML = """<!DOCTYPE html>
                 recognition.interimResults = false;
                 recognition.lang = 'en-US';
 
+                recognition.onstart = function() {
+                    // Interrupt TTS speaking if user starts talking
+                    if ('speechSynthesis' in window && window.speechSynthesis.speaking) {
+                        window.speechSynthesis.cancel();
+                        isSpeaking = false;
+                    }
+                };
+
                 recognition.onresult = function(event) {
-                    if (isSpeaking) return;
                     const lastResult = event.results[event.results.length - 1];
                     const transcript = lastResult[0].transcript.trim();
                     if (!transcript) return;
 
-                    console.log('Voice Input:', transcript);
+                    console.log('Voice Input Received:', transcript);
                     document.getElementById('userInput').value = transcript;
                     sendMessage();
                 };
 
                 recognition.onend = function() {
                     if (isVoiceActive && !isSpeaking) {
-                        setTimeout(() => { try { recognition.start(); } catch(e){} }, 500);
+                        setTimeout(() => { try { recognition.start(); } catch(e){} }, 400);
                     }
                 };
             }
@@ -559,12 +601,13 @@ JARVIS_HUD_HTML = """<!DOCTYPE html>
                 btn.style.borderColor = '#FFD700';
                 btn.style.color = '#FFD700';
                 if (recognition) { try { recognition.start(); } catch(e){} }
-                speakText("Voice mode active.");
+                speakText("Voice mode active. I am here for you.");
             } else {
                 status.textContent = '⚡ PRESS TOGGLE VOICE MODE TO ACTIVATE MIC';
                 btn.style.borderColor = '#00F0FF';
                 btn.style.color = '#00F0FF';
                 if (recognition) { try { recognition.stop(); } catch(e){} }
+                if ('speechSynthesis' in window) window.speechSynthesis.cancel();
             }
         }
 
@@ -574,26 +617,90 @@ JARVIS_HUD_HTML = """<!DOCTYPE html>
                 if (recognition) { try { recognition.stop(); } catch(e){} }
                 window.speechSynthesis.cancel();
 
-                const utterance = new SpeechSynthesisUtterance(text);
-                utterance.pitch = 1.0;
-                utterance.rate = 1.0;
+                const cleanSpokenText = cleanTextForSpeech(text);
+                const utterance = new SpeechSynthesisUtterance(cleanSpokenText);
+                
+                const voice = getBestVoice();
+                if (voice) utterance.voice = voice;
+                
+                utterance.pitch = 1.15; // Warmer, cute, natural accent tone
+                utterance.rate = 1.05;  // Lively conversational pace
 
                 utterance.onend = function() {
                     isSpeaking = false;
                     if (isVoiceActive && recognition) {
-                        setTimeout(() => { try { recognition.start(); } catch(e){} }, 500);
+                        setTimeout(() => { try { recognition.start(); } catch(e){} }, 400);
                     }
                 };
 
                 utterance.onerror = function() {
                     isSpeaking = false;
                     if (isVoiceActive && recognition) {
-                        setTimeout(() => { try { recognition.start(); } catch(e){} }, 500);
+                        setTimeout(() => { try { recognition.start(); } catch(e){} }, 400);
                     }
                 };
 
                 window.speechSynthesis.speak(utterance);
             }
+        }
+
+        async function sendMessage() {
+            const input = document.getElementById('userInput');
+            const prompt = input.value.trim();
+            if (!prompt) return;
+
+            input.value = '';
+            taskQueue.push(prompt);
+            
+            if (!isProcessingQueue) {
+                processTaskQueue();
+            }
+        }
+
+        async function processTaskQueue() {
+            if (taskQueue.length === 0) {
+                isProcessingQueue = false;
+                return;
+            }
+
+            isProcessingQueue = true;
+            const prompt = taskQueue.shift();
+
+            const msgs = document.getElementById('messages');
+            
+            const uDiv = document.createElement('div');
+            uDiv.className = 'msg user';
+            uDiv.textContent = prompt;
+            msgs.appendChild(uDiv);
+            msgs.scrollTop = msgs.scrollHeight;
+
+            const jDiv = document.createElement('div');
+            jDiv.className = 'msg jarvis';
+            jDiv.textContent = '⚡ LALA Processing...';
+            msgs.appendChild(jDiv);
+            msgs.scrollTop = msgs.scrollHeight;
+
+            try {
+                const res = await fetch('/chat', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ prompt: prompt, session_id: currentSessionId })
+                });
+                const data = await res.json();
+                if (res.ok) {
+                    const outText = data.response || 'Acknowledged.';
+                    jDiv.textContent = outText;
+                    if (isVoiceActive) speakText(outText);
+                } else {
+                    jDiv.textContent = '⚠️ Backend Notice: ' + (data.detail || 'Service initializing, please retry.');
+                }
+            } catch (err) {
+                jDiv.textContent = '⚡ Server is updating. Please retry in a moment.';
+            }
+            msgs.scrollTop = msgs.scrollHeight;
+
+            // Process next message in queue sequentially
+            setTimeout(processTaskQueue, 300);
         }
 
         async function uploadFile() {
@@ -615,7 +722,7 @@ JARVIS_HUD_HTML = """<!DOCTYPE html>
 
             const jDiv = document.createElement('div');
             jDiv.className = 'msg jarvis';
-            jDiv.textContent = '🔬 LALA Static PE Analysis & gVisor Sandbox Detonation...';
+            jDiv.textContent = '🔬 LALA Analyzing Document / File...';
             msgs.appendChild(jDiv);
             msgs.scrollTop = msgs.scrollHeight;
 
@@ -629,47 +736,6 @@ JARVIS_HUD_HTML = """<!DOCTYPE html>
                 if (isVoiceActive) speakText(data.analysis || 'File analysis complete.');
             } catch (err) {
                 jDiv.textContent = '❌ Error uploading file to LALA backend.';
-            }
-            msgs.scrollTop = msgs.scrollHeight;
-        }
-
-        async function sendMessage() {
-            const input = document.getElementById('userInput');
-            const prompt = input.value.trim();
-            if (!prompt) return;
-
-            const msgs = document.getElementById('messages');
-            
-            const uDiv = document.createElement('div');
-            uDiv.className = 'msg user';
-            uDiv.textContent = prompt;
-            msgs.appendChild(uDiv);
-
-            input.value = '';
-            msgs.scrollTop = msgs.scrollHeight;
-
-            const jDiv = document.createElement('div');
-            jDiv.className = 'msg jarvis';
-            jDiv.textContent = '⚡ LALA AI Processing...';
-            msgs.appendChild(jDiv);
-            msgs.scrollTop = msgs.scrollHeight;
-
-            try {
-                const res = await fetch('/chat', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ prompt: prompt, session_id: currentSessionId })
-                });
-                const data = await res.json();
-                if (res.ok) {
-                    const outText = data.response || 'Command acknowledged.';
-                    jDiv.textContent = outText;
-                    if (isVoiceActive) speakText(outText);
-                } else {
-                    jDiv.textContent = '⚠️ Backend Notice: ' + (data.detail || 'Service initializing, please retry.');
-                }
-            } catch (err) {
-                jDiv.textContent = '⚡ Server is completing deployment. Please click TRANSMIT again in a moment.';
             }
             msgs.scrollTop = msgs.scrollHeight;
         }
