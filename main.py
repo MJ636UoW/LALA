@@ -405,11 +405,11 @@ JARVIS_HUD_HTML = """<!DOCTYPE html>
 <body>
     <header>
         <div class="hud-logo">
-            ⚡ LALA — MALWARE ANALYSIS & PENTEST HUD
+            ⚡ LALA — UNIVERSAL AI COMPANION & OPERATING ASSISTANT
         </div>
         <div class="status-badge">
             <div class="dot"></div>
-            gVISOR SANDBOX ACTIVE | PROCMON & WIRESHARK ON
+            LIVE WEB SEARCH ACTIVE | UNIVERSAL PERSONAL COMPANION
         </div>
         <div class="hud-links">
             <a href="/docs" target="_blank">API DOCS</a>
@@ -419,14 +419,15 @@ JARVIS_HUD_HTML = """<!DOCTYPE html>
     <main>
         <!-- Left Sidebar: Recent Chats & Sandbox Trigger -->
         <div class="sidebar-panel">
-            <button class="new-chat-btn" onclick="startNewChat()">+ NEW PENTEST SESSION</button>
+            <button class="new-chat-btn" onclick="startNewChat()">+ NEW CHAT SESSION</button>
             <button class="new-chat-btn" style="background: rgba(255,215,0,0.15); border-color: #FFD700; color: #FFD700;" onclick="triggerSandboxAnalysis()">🔬 DETONATE IN gVISOR</button>
             
-            <div class="recent-title">RECENT CONVERSATIONS</div>
+            <div class="recent-title">CONVERSATION TOPICS</div>
             <div class="recent-chats-list" id="recentChats">
-                <div class="chat-item active" onclick="switchSession('default', this)">🛡️ Main Pentest Partner</div>
-                <div class="chat-item" onclick="switchSession('malware_analysis', this)">🔬 Malware Analysis & PE</div>
-                <div class="chat-item" onclick="switchSession('reverse_engineering', this)">⚙️ ProcMon & Wireshark</div>
+                <div class="chat-item active" onclick="switchSession('default', this)">💬 Personal & Life Partner</div>
+                <div class="chat-item" onclick="switchSession('web_search', this)">🌐 Live Google Web Search</div>
+                <div class="chat-item" onclick="switchSession('cybersecurity', this)">🛡️ Cybersecurity & Coding</div>
+                <div class="chat-item" onclick="switchSession('malware_sandbox', this)">🔬 Malware Sandbox & PE</div>
             </div>
         </div>
 
@@ -448,11 +449,11 @@ JARVIS_HUD_HTML = """<!DOCTYPE html>
         <!-- Right: HUD Terminal Panel -->
         <div class="hud-chat-panel">
             <div class="chat-header">
-                <span>🖥️ COMMAND TERMINAL & TELEMETRY MONITOR</span>
+                <span>🖥️ COMMAND TERMINAL & OPERATING MONITOR</span>
                 <button class="reset-btn" onclick="resetTopic()">🔄 RESET TOPIC</button>
             </div>
             <div class="chat-messages" id="messages">
-                <div class="msg jarvis">🤖 Pentester AI Partner Online. gVisor Sandbox, ProcMon Telemetry & Wireshark network packet analysis active. Upload binary or ask technical questions below.</div>
+                <div class="msg jarvis">🤖 LALA Universal Operating Partner Online. Here for your personal questions, life advice, live web search, coding, cybersecurity, or whatever is on your mind, Mandar.</div>
             </div>
             <div class="input-bar">
                 <input type="file" id="fileInput" style="display: none;" onchange="uploadFile()">

@@ -18,6 +18,7 @@ from lala.investigation.manager import InvestigationManager
 from lala.llm.manager import LocalLLMManager
 from lala.rag.manager import LocalRAGManager
 from lala.automation.workflow import AutonomousWorkflowEngine
+from lala.tools.web import WebSearchTool
 from lala.utils.logging import logger
 
 MAX_TOOL_ITERATIONS = 5
@@ -27,10 +28,12 @@ RESET_TOPIC_PHRASES = [
     "reset chat", "reset topic", "start new topic", "clear chat"
 ]
 
+SEARCH_KEYWORDS = ["search", "google", "find", "strength of", "who is", "what is", "latest", "news", "website", "online"]
+
 class Orchestrator:
     """
-    Central pipeline orchestrator for LALA Phase 10 & Multi-Turn Pentester Partner.
-    Coordinates User Goal -> Multi-Session Chat Memory -> RAG Context -> Security Engine -> Model Generation.
+    Central pipeline orchestrator for LALA — Uncensored ChatGPT Partner with Live Web Browsing.
+    Coordinates User Goal -> Automatic Web Search -> Multi-Session Chat Memory -> Model Generation.
     """
     def __init__(self, config: Optional[LalaConfig] = None):
         self.config = config or load_config()
@@ -45,6 +48,7 @@ class Orchestrator:
         self.tools = ToolRegistry(security_engine=self.security, intel_manager=self.intel_manager)
         self.planner = ToolPlanner()
         self.executor = ToolExecutor(registry=self.tools)
+        self.web_search_tool = WebSearchTool()
         self.memory = MemoryManager(db_path=self.config.storage.memory_path)
         
         default_root = "D:\\LALA" if os.path.exists("D:\\LALA") else os.path.realpath(os.getcwd())
@@ -75,13 +79,22 @@ class Orchestrator:
         # Check Topic Reset Phrases
         if any(phrase in lower_input for phrase in RESET_TOPIC_PHRASES):
             self.reset_session(session_id)
-            return "Topic reset acknowledged. Starting a fresh conversation. What security task shall we work on next, Mandar?"
+            return "Topic reset acknowledged. Fresh chat started. What shall we do next, Mandar?"
 
         # Initialize session history if not present
         if session_id not in self.sessions:
             self.sessions[session_id] = []
 
         history = self.sessions[session_id]
+
+        # Check if live web search should be auto-triggered
+        web_context = ""
+        is_search_query = any(k in lower_input for k in SEARCH_KEYWORDS) or "google" in lower_input
+        if is_search_query:
+            logger.info(f"Orchestrator: Auto-executing live web search for '{clean_input}'")
+            search_res = self.web_search_tool.execute(query=clean_input)
+            if search_res.success and search_res.output:
+                web_context = f"\n[LIVE WEB SEARCH RESULTS FROM GOOGLE/DUCKDUCKGO]\n{search_res.output}\n\n"
 
         # Format conversation history block (last 8 messages for speed & context)
         history_block = ""
@@ -90,11 +103,11 @@ class Orchestrator:
             for item in history[-8:]:
                 role = "Mandar" if item["role"] == "user" else "LALA"
                 history_lines.append(f"{role}: {item['content']}")
-            history_block = f"[CONVERSATION HISTORY - CONTINUE CONTEXT DIRECTLY]\n" + "\n".join(history_lines) + "\n\n"
+            history_block = f"[CONVERSATION HISTORY]\n" + "\n".join(history_lines) + "\n\n"
 
-        # Build system prompt with history context
+        # Build system prompt with history and live web search context
         base_system_prompt = self.personality.get_system_prompt(self.state.language_context)
-        system_prompt_with_history = f"{base_system_prompt}\n\n{history_block}" if history_block else base_system_prompt
+        system_prompt_with_history = f"{base_system_prompt}\n\n{web_context}{history_block}"
         
         system_prompt = self.rag_manager.build_prompt_context(system_prompt_with_history, clean_input, top_k=3)
 
@@ -117,7 +130,7 @@ class Orchestrator:
             tool_res = self.executor.execute_request(tool_req)
 
             if tool_res.success:
-                current_prompt = f"Tool '{tool_req.tool}' output: {tool_res.output}\nAnswer Mandar."
+                current_prompt = f"Tool '{tool_req.tool}' output: {tool_res.output}\nAnswer Mandar directly."
             else:
                 current_prompt = f"Tool '{tool_req.tool}' error: {tool_res.error}\nExplain this to Mandar."
 
